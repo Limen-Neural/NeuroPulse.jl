@@ -10,28 +10,28 @@ end
     return neuron_id
 end
 
-@inline function _project_attention(weights::AbstractVector{<:Real}, values::AbstractMatrix)
-    length(weights) == size(values, 1) ||
-        throw(DimensionMismatch("attention weights length must match value rows"))
-    return transpose(values) * weights
+@inline function _apply_readout(weights::AbstractVector{<:Real}, readout::AbstractMatrix)
+    length(weights) == size(readout, 1) ||
+        throw(DimensionMismatch("attention weights length must match readout rows"))
+    return transpose(readout) * weights
 end
 
 function spike_attention_discrete(
-    q::SpikeTrain,
-    k::SpikeTrain,
-    v::AbstractMatrix,
+    source_spikes::SpikeTrain,
+    context_spikes::SpikeTrain,
+    readout::AbstractMatrix,
 )
-    n = _check_positive_rows(v)
+    n = _check_positive_rows(readout)
     attention = zeros(Float32, n)
 
-    @inbounds for qe in q.events
-        qid = _check_neuron_id(qe.neuron_id, n, "query")
-        for ke in k.events
-            if qid == ke.neuron_id
-                attention[qid] += qe.value * ke.value
+    @inbounds for source_event in source_spikes.events
+        source_id = _check_neuron_id(source_event.neuron_id, n, "source")
+        for context_event in context_spikes.events
+            if source_id == context_event.neuron_id
+                attention[source_id] += source_event.value * context_event.value
             end
         end
     end
 
-    return _project_attention(attention, v)
+    return _apply_readout(attention, readout)
 end
