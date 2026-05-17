@@ -92,7 +92,8 @@ using SpikenautNero
         @test !all(iszero, nero.prev_relevance)
         @test length(nero.prev_relevance) == 4
 
-        # Second tick: prev_relevance should reflect tick-1 raw values
+        # Second tick: prev_relevance is updated in-place as a scratch buffer,
+        # so its contents will differ from the previous tick's raw values
         prev_first = copy(nero.prev_relevance)
         update_relevance!(nero, lobes)
         @test nero.prev_relevance != prev_first
