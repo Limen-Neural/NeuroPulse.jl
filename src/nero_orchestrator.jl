@@ -33,7 +33,8 @@ const NERO_EMA_DECAY   = 0.05f0   # EMA smoothing factor (5% new estimate per ti
 const NERO_MIN_SCORE   = 0.01f0   # Clamp: never let any lobe drop to zero relevance
 const NERO_EPSILON     = 1.0f-6   # Numerical stability floor for normalisation
 
-# Default lobe names (4-lobe ensemble for LLM routing)
+# Default lobe names for the historical 4-component example layout.
+# Callers should override these when modeling a different system boundary.
 const NERO_DEFAULT_LOBE_NAMES = ["Attention", "FFN", "Memory", "Output"]
 
 # Cross-lobe inhibition: lateral inhibition for winner-take-all routing.

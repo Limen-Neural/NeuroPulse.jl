@@ -1,21 +1,16 @@
 """
     NeuroPulse
 
-NERO: Neuromorphic Evaluation of Relevance and Orchestration.
+Spike-driven relevance routing for modular neural systems.
 
-Computes per-tick relevance scores across SNN lobes using:
-- Spike density (α=0.50)
-- Manifold surprise via EMA deviation (β=0.35)
-- Relevance momentum (γ=0.15)
+NeuroPulse computes per-tick routing weights across component summaries using:
+- spike density (α=0.50)
+- manifold surprise via EMA deviation (β=0.35)
+- routing momentum (γ=0.15)
 
-Cross-lobe inhibition via a static directed graph, followed by
-softmax normalisation so all scores sum to 1.0.
-
-## Provenance
-
-Extracted from Eagle-Lander, the author's own private neuromorphic GPU supervisor
-repository (closed-source). NERO orchestrated a 4-lobe 65,536-neuron LSM ensemble
-in production before being open-sourced as a standalone Julia package.
+The current package still exposes the historical NERO naming in parts of the API,
+but the package boundary is intentionally narrow: it owns relevance routing, not a
+full SNN runtime, training system, or hardware integration layer.
 """
 module NeuroPulse
 
