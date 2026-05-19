@@ -1,4 +1,4 @@
-# NeuroPulse API notes
+# TemporalFocus API notes
 
 This document summarizes the exported API as it exists today.
 

@@ -1,6 +1,6 @@
-# NeuroPulse overview
+# TemporalFocus overview
 
-NeuroPulse.jl is a focused routing library for modular neural systems.
+TemporalFocus.jl is a focused routing library for modular neural systems.
 
 Its job is simple: given a set of component summaries for the current tick, compute a
 normalized relevance vector that can be used by a caller to prioritize which components
@@ -13,7 +13,7 @@ Each component contributes two signals:
 - activity now: how much it is firing this tick
 - change now: how much its readout changed relative to recent history
 
-NeuroPulse combines those with routing momentum, applies lateral inhibition, and emits a
+TemporalFocus combines those with routing momentum, applies lateral inhibition, and emits a
 new routing distribution.
 
 ## Data flow
@@ -38,7 +38,7 @@ That keeps it easy to embed in:
 
 ## Intended usage pattern
 
-NeuroPulse works best when another system already owns:
+TemporalFocus works best when another system already owns:
 
 - neuron updates
 - reservoir stepping
@@ -47,18 +47,18 @@ NeuroPulse works best when another system already owns:
 - scheduling/execution
 
 That system should reduce its internal state to a small component summary and call
-NeuroPulse as a pure routing stage.
+TemporalFocus as a pure routing stage.
 
 ## Boundary guidance
 
-Good fits for NeuroPulse:
+Good fits for TemporalFocus:
 
 - deciding which reservoir/readout path is most relevant this tick
 - reweighting modules in a modular neural pipeline
 - prioritizing component execution from spike-derived signals
 - monitoring surprise and dominance across component groups
 
-Poor fits for NeuroPulse:
+Poor fits for TemporalFocus:
 
 - simulating neuron membrane equations
 - reading exchange feeds or hardware sensors directly
@@ -77,6 +77,6 @@ The package still carries some historical assumptions:
 
 ## Practical interpretation for users
 
-Treat NeuroPulse as a reusable routing kernel, not as a finished platform.
+Treat TemporalFocus as a reusable routing kernel, not as a finished platform.
 It is already useful for experiments, but it still needs substantial cleanup and design
 work before it reaches the broader long-term state rmems wants.

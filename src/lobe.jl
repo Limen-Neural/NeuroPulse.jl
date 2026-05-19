@@ -1,6 +1,6 @@
 # lobe.jl — Lightweight lobe state for NERO relevance scoring
 #
-# Decouples NeuroPulse from the full EnsembleBrain / CUDA stack.
+# Decouples TemporalFocus from the full EnsembleBrain / CUDA stack.
 # Populate from whatever SNN backend you use, then pass to update_relevance!.
 
 """

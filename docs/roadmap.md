@@ -1,8 +1,8 @@
-# NeuroPulse roadmap and candid status
+# TemporalFocus roadmap and candid status
 
 ## Current state
 
-NeuroPulse is a real library, but it is still an extraction in progress.
+TemporalFocus is a real library, but it is still an extraction in progress.
 
 It already provides a useful routing core:
 - spike-density scoring
@@ -17,7 +17,7 @@ shape rmems wants.
 
 ### 1. Naming cleanup
 
-The repository/package name is now `NeuroPulse`, but parts of the API still expose older
+The repository/package name is now `TemporalFocus`, but parts of the API still expose older
 NERO-specific naming.
 
 Examples:
@@ -63,7 +63,7 @@ This README/docs pass is a cleanup step, not the end state. Useful future docs w
 
 ## Desired long-term direction
 
-A stronger future NeuroPulse would look like this:
+A stronger future TemporalFocus would look like this:
 
 - clean package identity with generalized naming
 - explicit ownership boundaries
@@ -74,7 +74,7 @@ A stronger future NeuroPulse would look like this:
 
 ## What this library should remain
 
-Even after more work, NeuroPulse should remain small.
+Even after more work, TemporalFocus should remain small.
 
 It should be a routing/relevance library, not a monolithic platform.
 That means future growth should sharpen the boundary rather than blur it.

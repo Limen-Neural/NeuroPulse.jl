@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/logo.png" width="220" alt="NeuroPulse">
+  <img src="docs/logo.png" width="220" alt="TemporalFocus">
 </p>
 
-<h1 align="center">NeuroPulse.jl</h1>
+<h1 align="center">TemporalFocus.jl</h1>
 <p align="center">Spike-driven relevance routing for modular neural systems</p>
 
 <p align="center">
@@ -12,7 +12,7 @@
 
 ---
 
-NeuroPulse.jl is a small Julia library for computing per-component relevance scores from
+TemporalFocus.jl is a small Julia library for computing per-component relevance scores from
 spike activity and readout change over time. The core abstraction is a routing loop that
 updates component weights from:
 
@@ -26,7 +26,7 @@ integration layer, or a hardware supervisor.
 
 ## Project status
 
-NeuroPulse is an extracted, early-stage library. It is useful today, but it still needs a
+TemporalFocus is an extracted, early-stage library. It is useful today, but it still needs a
 lot of work before it reaches the broader long-term shape rmems wants for it.
 
 What this means in practice:
@@ -36,9 +36,9 @@ What this means in practice:
 - documentation and boundaries are improving, but the package is not yet the final form
 - downstream integrations should treat this as an evolving library rather than a finished platform
 
-## What NeuroPulse owns
+## What TemporalFocus owns
 
-NeuroPulse owns spike-driven relevance routing logic:
+TemporalFocus owns spike-driven relevance routing logic:
 
 - `LobeState` as a compact per-component summary
 - `NeroOrchestrator` as the mutable routing state
@@ -46,9 +46,9 @@ NeuroPulse owns spike-driven relevance routing logic:
 - `nero_diagnostics` for lightweight inspection/logging
 - `adapt_leak!` as a small optional helper for stress-aware leak adaptation
 
-## What NeuroPulse does not own
+## What TemporalFocus does not own
 
-NeuroPulse does not own:
+TemporalFocus does not own:
 
 - full neuron or reservoir simulation
 - training loops or plasticity pipelines
@@ -58,19 +58,19 @@ NeuroPulse does not own:
 - model-specific ANN/LLM adapters
 
 If a workflow needs those pieces, they should live in surrounding libraries or applications
-that feed compact readouts into NeuroPulse.
+that feed compact readouts into TemporalFocus.
 
 ## Installation
 
 ```julia
 using Pkg
-Pkg.add("NeuroPulse")
+Pkg.add("TemporalFocus")
 ```
 
 ## Quick start
 
 ```julia
-using NeuroPulse
+using TemporalFocus
 
 orch = NeroOrchestrator(
     n_lobes = 4,
@@ -94,7 +94,7 @@ println(nero_diagnostics(orch))
 
 ## Core routing rule
 
-At each tick, NeuroPulse computes a raw score for each component:
+At each tick, TemporalFocus computes a raw score for each component:
 
 ```
 score_i = α · density_i + β · surprise_i + γ · momentum_i
@@ -146,16 +146,16 @@ Additional docs live in `docs/`:
 
 ## Migration note
 
-This repository was renamed from `SpikenautNero.jl` to `NeuroPulse.jl`.
+This repository was renamed from `SpikenautAttention.jl` (earlier internal snapshots also used `SpikenautNero.jl`) to `TemporalFocus.jl`.
 
 Migration steps for downstream users:
 
-- replace `Pkg.add("SpikenautNero")` with `Pkg.add("NeuroPulse")`
-- replace `using SpikenautNero` with `using NeuroPulse`
+- replace `Pkg.add("SpikenautAttention")` with `Pkg.add("TemporalFocus")`
+- replace `using SpikenautAttention` with `using TemporalFocus`
 - update any package metadata or examples that still reference the old name
 
 The NERO algorithm name remains in the current public API via `NeroOrchestrator` and
-`nero_diagnostics`, but the package identity is now `NeuroPulse`.
+`nero_diagnostics`, but the package identity is now `TemporalFocus`.
 
 ## Development
 

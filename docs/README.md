@@ -1,4 +1,4 @@
-# NeuroPulse documentation index
+# TemporalFocus documentation index
 
 - `overview.md` — scope, architecture, and intended usage
 - `api.md` — exported API notes and current limitations

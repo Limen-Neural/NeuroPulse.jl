@@ -1,7 +1,7 @@
 using Test
-using NeuroPulse
+using TemporalFocus
 
-@testset "NeuroPulse" begin
+@testset "TemporalFocus" begin
 
     @testset "NeroOrchestrator construction" begin
         nero = NeroOrchestrator()
@@ -27,7 +27,7 @@ using NeuroPulse
             update_relevance!(nero, lobes)
         end
         for r in nero.routing_weights
-            @test r >= NeuroPulse.NERO_MIN_SCORE
+            @test r >= TemporalFocus.NERO_MIN_SCORE
         end
     end
 
