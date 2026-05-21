@@ -1,4 +1,4 @@
-module SpikenautAttention
+module SpikeAttention
 
 export SpikeEvent, SpikeTrain, TemporalBuffer
 export prune!
