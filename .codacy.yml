@@ -1,0 +1,20 @@
+---
+engines:
+  duplication:
+    enabled: true
+    exclude_paths:
+      - test/
+  markdownlint:
+    enabled: true
+  shellcheck:
+    enabled: true
+
+exclude_paths:
+  - ".mimocode/**"
+  - ".codex/**"
+  - ".cursor/**"
+  - ".kilo/**"
+  - ".vscode/**"
+  - "docs/**"
+  - "Manifest.toml"
+  - "**/*.md"

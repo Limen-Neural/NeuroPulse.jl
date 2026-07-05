@@ -1,5 +1,29 @@
-Manifest.toml
+# Julia
+/Manifest.toml
+*.jl.cov
+*.jl.*.cov
+
+# Build artifacts
+docs/build/
+/test/output/
+
+# Data files
 *.jld2
+*.jld
 *.mem
 *.log
-/test/output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / Tools
+.vscode/
+.idea/
+.codex/
+.cursor/
+.kilo/
+.mimocode/
+*.swp
+*.swo
+*~
