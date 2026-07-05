@@ -12,4 +12,5 @@ jobs:
       - uses: julia-actions/julia-format@v4
         with:
           version: "1"
+          check: "true"
           paths: "src/, test/"

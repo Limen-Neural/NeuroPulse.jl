@@ -1,8 +1,7 @@
 # Julia
-Manifest.toml
+/Manifest.toml
 *.jl.cov
 *.jl.*.cov
-*.jl.mem
 
 # Build artifacts
 docs/build/
