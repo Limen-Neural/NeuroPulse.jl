@@ -8,8 +8,8 @@ jobs:
   code-style:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/julia-format@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: julia-actions/julia-format@cde9661e440a6a214c9c0c2c63a3dbdaa5fabd2f # v4
         with:
           version: "1"
           check: "true"
