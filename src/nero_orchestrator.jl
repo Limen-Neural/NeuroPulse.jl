@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
 # nero_orchestrator.jl — NERO: Neuromorphic Evaluation of Relevance and Orchestration
 #
 # NERO manages a 4-node static graph over lobe states and computes a per-tick

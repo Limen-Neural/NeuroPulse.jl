@@ -7,7 +7,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/language-Julia-9558B2" alt="Julia">
-  <img src="https://img.shields.io/badge/license-GPL--3.0-orange" alt="GPL-3.0">
+  <img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="MIT OR Apache-2.0">
 </p>
 
 ---
@@ -166,4 +166,13 @@ julia --project -e 'using Pkg; Pkg.instantiate(); Pkg.test()'
 
 ## License
 
-GPL-3.0-or-later
+This project is licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE-2.0](LICENSE-APACHE-2.0) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+Contributions intentionally submitted for inclusion in this package by you, as
+defined in the Apache-2.0 license, shall be dual-licensed as above, without any
+additional terms or conditions.

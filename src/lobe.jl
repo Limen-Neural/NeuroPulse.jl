@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
 # lobe.jl — Lightweight lobe state for NERO relevance scoring
 #
 # Decouples TemporalFocus from the full EnsembleBrain / CUDA stack.
