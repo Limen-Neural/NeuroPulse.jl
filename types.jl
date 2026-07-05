@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 struct SpikeEvent
     neuron_id::Int
     t::Float32

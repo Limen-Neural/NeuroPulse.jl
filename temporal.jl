@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 @inline function temporal_weight(dt::Real, τ::Real)
     τ_f32 = Float32(τ)
     τ_f32 > 0f0 || throw(ArgumentError("τ must be positive"))

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 @inline function _check_positive_rows(v::AbstractMatrix)
     nrows = size(v, 1)
     nrows > 0 || throw(ArgumentError("value matrix must have at least one row"))

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 function spike_attention_continuous(
     source_buffer::TemporalBuffer,
     context_buffer::TemporalBuffer,

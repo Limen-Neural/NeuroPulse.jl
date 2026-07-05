@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 function normalize_l1!(weights::AbstractVector{<:AbstractFloat})
     total = sum(weights)
     if total > zero(total)
