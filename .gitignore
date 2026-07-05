@@ -1,5 +1,29 @@
+# Julia
 Manifest.toml
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+
+# Build artifacts
+docs/build/
+/test/output/
+
+# Data files
 *.jld2
+*.jld
 *.mem
 *.log
-/test/output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Misc
+.mimocode/
