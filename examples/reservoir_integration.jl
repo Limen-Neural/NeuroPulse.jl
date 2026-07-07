@@ -9,7 +9,8 @@ Toy stand-in for a reservoir or upstream model readout. Real integrations should
 replace this with the compact Float32 vector emitted by the surrounding system.
 """
 function reservoir_readout(seed::Float32, width::Int)
-    return Float32[sin(seed + i / width) for i = 1:width]
+    width32 = Float32(width)
+    return Float32[sin(seed + Float32(i) / width32) for i = 1:width]
 end
 
 router = RegionRouter(

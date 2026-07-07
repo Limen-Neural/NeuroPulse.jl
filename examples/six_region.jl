@@ -8,6 +8,10 @@ router = RegionRouter(
     region_names = ["vision", "audio", "touch", "context", "planner", "action"],
 )
 
+# Keep this example focused on custom region sizing. The package's default
+# lateral inhibition constants are tuned for the historical 4-region layout.
+router.adjacency_matrix .= 0.0f0
+
 regions = [
     ActivityRegion(0.92f0, Float32[0.9, 0.6, 0.2]),
     ActivityRegion(0.44f0, Float32[0.3, 0.8, 0.4]),
