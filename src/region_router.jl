@@ -97,6 +97,12 @@ function RegionRouter(;
     region_names::Vector{String} = DEFAULT_REGION_NAMES,
 )
 
+    # Auto-generate region names if not enough provided
+    if length(region_names) < n_regions
+        region_names = vcat(region_names, ["Region$i" for i in length(region_names)+1:n_regions])
+    end
+    region_names = region_names[1:n_regions]
+
     adjacency_matrix = zeros(Float32, n_regions, n_regions)
     for i = 1:n_regions, j = 1:n_regions
         i != j && (adjacency_matrix[i, j] = 1.0f0)
@@ -143,10 +149,6 @@ Softmax normalisation → sum(relevance) = 1.0, each ≥ MIN_SCORE.
 function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     router.tick_count += 1
     n = router.n_regions
-
-    # Snapshot previous weights for momentum calculation (before we overwrite them)
-    copyto!(router.prev_routing_weights, router.routing_weights)
-
     raw = router.prev_relevance   # reuse buffer (prev no longer needed this tick)
 
     # ── Stage 1-3: per-region signal collection ───────────────────────────
@@ -204,6 +206,9 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         end
     end
     inhibited ./= (sum(inhibited) + EPSILON)
+
+    # Snapshot current weights for next tick's momentum calculation
+    copyto!(router.prev_routing_weights, router.routing_weights)
 
     return nothing
 end

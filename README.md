@@ -72,24 +72,36 @@ Pkg.add("TemporalFocus")
 ```julia
 using TemporalFocus
 
-orch = NeroOrchestrator(
-    n_lobes = 4,
+router = RegionRouter(
+    n_regions = 4,
     n_out = 8,
-    lobe_names = ["sensor", "reservoir", "memory", "decoder"],
+    region_names = ["sensor", "reservoir", "memory", "decoder"],
 )
 
-lobes = [
-    LobeState(0.82f0, Float32[0.9, 0.7, 0.2, 0.1, 0.0, 0.1, 0.3, 0.5]),
-    LobeState(0.28f0, Float32[0.3, 0.2, 0.1, 0.0, 0.0, 0.0, 0.2, 0.2]),
-    LobeState(0.41f0, Float32[0.4, 0.6, 0.5, 0.2, 0.1, 0.1, 0.0, 0.1]),
-    LobeState(0.12f0, Float32[0.1, 0.1, 0.0, 0.0, 0.4, 0.6, 0.8, 0.9]),
+regions = [
+    ActivityRegion(0.82f0, Float32[0.9, 0.7, 0.2, 0.1, 0.0, 0.1, 0.3, 0.5]),
+    ActivityRegion(0.28f0, Float32[0.3, 0.2, 0.1, 0.0, 0.0, 0.0, 0.2, 0.2]),
+    ActivityRegion(0.41f0, Float32[0.4, 0.6, 0.5, 0.2, 0.1, 0.1, 0.0, 0.1]),
+    ActivityRegion(0.12f0, Float32[0.1, 0.1, 0.0, 0.0, 0.4, 0.6, 0.8, 0.9]),
 ]
 
-update_relevance!(orch, lobes)
+update_routing!(router, regions)
 
-routing_weights = orch.routing_weights
+routing_weights = router.routing_weights
 println(routing_weights)
-println(nero_diagnostics(orch))
+println(routing_diagnostics(router))
+```
+
+### Legacy API
+
+The old NERO/lobe names still work as backward-compatible aliases:
+
+```julia
+# These are equivalent:
+LobeState == ActivityRegion
+NeroOrchestrator == RegionRouter
+update_relevance! == update_routing!
+nero_diagnostics == routing_diagnostics
 ```
 
 ## Core routing rule
