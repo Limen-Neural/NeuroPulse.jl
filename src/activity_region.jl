@@ -1,32 +1,29 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# lobe.jl — Lightweight lobe state for NERO relevance scoring
-#
-# Decouples TemporalFocus from the full EnsembleBrain / CUDA stack.
-# Populate from whatever SNN backend you use, then pass to update_relevance!.
+# activity_region.jl — Generic activity region state for relevance routing
 
 """
-    LobeState
+    ActivityRegion
 
-Minimal per-lobe summary consumed by NERO each tick.
+Minimal per-region summary consumed by the routing kernel each tick.
 
 Fields:
-  last_spike_rate  — normalised firing rate [0,1] for this lobe this tick
+  last_spike_rate  — normalised firing rate [0,1] for this region this tick
   output           — N_OUT-element readout vector (CPU Float32)
 """
-struct LobeState
+struct ActivityRegion
     last_spike_rate::Float32
     output::Vector{Float32}
 end
 
 """
-    LobeState(n_out::Int) -> LobeState
+    ActivityRegion(n_out::Int) -> ActivityRegion
 
-Construct a zero-initialised LobeState with `n_out` output channels.
+Construct a zero-initialised ActivityRegion with `n_out` output channels.
 """
-LobeState(n_out::Int) = LobeState(0.0f0, zeros(Float32, n_out))
+ActivityRegion(n_out::Int) = ActivityRegion(0.0f0, zeros(Float32, n_out))
 
 """
-    adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Float32) -> nothing
+    adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Real) -> nothing
 
 Adapt the base leak rate based on hardware thermal stress.
 
@@ -39,7 +36,7 @@ Arguments:
   leak_rate      - Reference to the current leak rate (modified in-place)
   fan_speed_perc - Fan speed percentage [0..100] from hardware telemetry
 """
-function adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Float32)
+function adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Real)
     min_leak = 0.01f0
     max_leak = 0.25f0
     normalized = clamp(fan_speed_perc / 100.0f0, 0.0f0, 1.0f0)
