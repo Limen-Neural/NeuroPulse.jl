@@ -171,7 +171,8 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         momentum = abs(router.routing_weights[i] - router.prev_routing_weights[i])
 
         # 5. Raw score
-        raw[i] = ALPHA * router.spike_density[i] + BETA * router.surprise[i] + GAMMA * momentum
+        raw[i] =
+            ALPHA * router.spike_density[i] + BETA * router.surprise[i] + GAMMA * momentum
     end
 
     # ── Stage 4: cross-region graph inhibition ────────────────────────────
@@ -179,7 +180,9 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     for dst = 1:n
         inh_sum = 0.0f0
         for src = 1:n
-            if router.adjacency_matrix[src, dst] > 0.0f0 && src <= size(INHIBIT, 1) && dst <= size(INHIBIT, 2)
+            if router.adjacency_matrix[src, dst] > 0.0f0 &&
+               src <= size(INHIBIT, 1) &&
+               dst <= size(INHIBIT, 2)
                 inh_sum += INHIBIT[src, dst] * raw[src]
             end
         end
