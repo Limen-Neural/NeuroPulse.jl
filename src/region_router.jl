@@ -143,6 +143,10 @@ Softmax normalisation → sum(relevance) = 1.0, each ≥ MIN_SCORE.
 function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     router.tick_count += 1
     n = router.n_regions
+
+    # Snapshot previous weights for momentum calculation (before we overwrite them)
+    copyto!(router.prev_routing_weights, router.routing_weights)
+
     raw = router.prev_relevance   # reuse buffer (prev no longer needed this tick)
 
     # ── Stage 1-3: per-region signal collection ───────────────────────────
@@ -150,7 +154,7 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         region = regions[i]
 
         # 1. Spike density
-        spike_density = region.last_spike_rate
+        router.spike_density[i] = region.last_spike_rate
 
         # 2. Readout EMA update (in-place)
         copyto!(router.scratch, region.output)
@@ -167,7 +171,7 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         momentum = abs(router.routing_weights[i] - router.prev_routing_weights[i])
 
         # 5. Raw score
-        raw[i] = ALPHA * spike_density + BETA * router.surprise[i] + GAMMA * momentum
+        raw[i] = ALPHA * router.spike_density[i] + BETA * router.surprise[i] + GAMMA * momentum
     end
 
     # ── Stage 4: cross-region graph inhibition ────────────────────────────
@@ -175,7 +179,7 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     for dst = 1:n
         inh_sum = 0.0f0
         for src = 1:n
-            if router.adjacency_matrix[src, dst] > 0.0f0
+            if router.adjacency_matrix[src, dst] > 0.0f0 && src <= size(INHIBIT, 1) && dst <= size(INHIBIT, 2)
                 inh_sum += INHIBIT[src, dst] * raw[src]
             end
         end
@@ -198,7 +202,6 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     end
     inhibited ./= (sum(inhibited) + EPSILON)
 
-    copyto!(router.prev_routing_weights, router.routing_weights)
     return nothing
 end
 

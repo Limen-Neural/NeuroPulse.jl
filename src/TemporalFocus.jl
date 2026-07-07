@@ -29,24 +29,18 @@ module TemporalFocus
 include("activity_region.jl")
 include("region_router.jl")
 
-# ── Backward-compatible legacy includes ───────────────────────────────────────
-
-# lobe.jl defines LobeState — but since ActivityRegion is structurally identical,
-# we skip re-defining it and just create an alias.
-# nero_orchestrator.jl defines NeroOrchestrator — same situation.
-# We include them for their adapt_leak! (already in activity_region.jl) and for
-# any code that references the NERO_* constants.
-
 # ── Exports ───────────────────────────────────────────────────────────────────
 
 # Generic API (preferred)
 export ActivityRegion, RegionRouter, update_routing!, routing_diagnostics, adapt_leak!
 
-# Backward-compatible aliases
+# Backward-compatible type aliases
 const LobeState = ActivityRegion
 const NeroOrchestrator = RegionRouter
-update_relevance! = update_routing!
-nero_diagnostics = routing_diagnostics
+
+# Backward-compatible function aliases (const for type stability)
+const update_relevance! = update_routing!
+const nero_diagnostics = routing_diagnostics
 
 export LobeState, NeroOrchestrator, update_relevance!, nero_diagnostics
 

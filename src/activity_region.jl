@@ -23,7 +23,7 @@ Construct a zero-initialised ActivityRegion with `n_out` output channels.
 ActivityRegion(n_out::Int) = ActivityRegion(0.0f0, zeros(Float32, n_out))
 
 """
-    adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Float32) -> nothing
+    adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Real) -> nothing
 
 Adapt the base leak rate based on hardware thermal stress.
 
@@ -36,7 +36,7 @@ Arguments:
   leak_rate      - Reference to the current leak rate (modified in-place)
   fan_speed_perc - Fan speed percentage [0..100] from hardware telemetry
 """
-function adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Float32)
+function adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Real)
     min_leak = 0.01f0
     max_leak = 0.25f0
     normalized = clamp(fan_speed_perc / 100.0f0, 0.0f0, 1.0f0)
