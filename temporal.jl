@@ -12,6 +12,8 @@ function spike_attention_temporal(
     readout::AbstractMatrix;
     τ::Real = 1.0f0,
 )
+    τ_f32 = Float32(τ)
+    τ_f32 > 0f0 || throw(ArgumentError("τ must be positive"))
     n = _check_positive_rows(readout)
     attention = zeros(Float32, n)
 
@@ -20,7 +22,7 @@ function spike_attention_temporal(
         for context_event in context_spikes.events
             if source_id == context_event.neuron_id
                 attention[source_id] += source_event.value * context_event.value *
-                                        temporal_weight(source_event.t - context_event.t, τ)
+                                        temporal_weight(source_event.t - context_event.t, τ_f32)
             end
         end
     end
