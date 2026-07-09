@@ -92,6 +92,20 @@ println(routing_weights)
 println(routing_diagnostics(router))
 ```
 
+## Examples
+
+Worked examples live in [`examples/`](examples/):
+
+- [`examples/three_region.jl`](examples/three_region.jl) — minimal 3-region layout
+- [`examples/six_region.jl`](examples/six_region.jl) — larger layout with custom region names
+- [`examples/reservoir_integration.jl`](examples/reservoir_integration.jl) — pattern for feeding compact reservoir readouts into TemporalFocus
+
+Run any example from the repository root:
+
+```bash
+julia --project=. examples/three_region.jl
+```
+
 ### Legacy API
 
 The old NERO/lobe names still work as backward-compatible aliases:
