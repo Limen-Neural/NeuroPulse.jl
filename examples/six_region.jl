@@ -2,14 +2,28 @@
 
 using TemporalFocus
 
+# Custom layouts may exceed the fixed 4×4 lateral-inhibition table
+# (`TemporalFocus.INHIBIT`). That is intentional here: `update_routing!`
+# bounds-checks every INHIBIT access (`src/dst <= size(INHIBIT, …)`), so
+# region indices beyond the table simply contribute 0 lateral inhibition
+# rather than throwing BoundsError. Prefer documenting the limit over
+# hard-erroring — a hard error would prevent this worked 6-region demo.
+const N_REGIONS = 6
+const INHIBIT_DIM = size(TemporalFocus.INHIBIT, 1)
+if N_REGIONS > INHIBIT_DIM
+    @info "n_regions=$N_REGIONS exceeds INHIBIT size $(INHIBIT_DIM)×$(INHIBIT_DIM); " *
+          "pairs involving region index > $INHIBIT_DIM skip lateral inhibition (safe)"
+end
+
 router = RegionRouter(
-    n_regions = 6,
+    n_regions = N_REGIONS,
     n_out = 3,
     region_names = ["vision", "audio", "touch", "context", "planner", "action"],
 )
 
-# Keep this example focused on custom region sizing. The package's default
-# lateral inhibition constants are tuned for the historical 4-region layout.
+# Keep this example focused on custom region sizing / naming. Zeroing the
+# adjacency matrix fully disables graph inhibition for this demo (INHIBIT
+# is only consulted when adjacency_matrix[src, dst] > 0).
 router.adjacency_matrix .= 0.0f0
 
 regions = [
