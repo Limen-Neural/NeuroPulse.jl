@@ -26,7 +26,7 @@ You are an AI coding assistant working on NeuroPulse.jl (`Project.toml` name: `T
 - Use Julia with `--project=.` for all package operations.
 - Run the suite: `julia --project=. -e 'using Pkg; Pkg.test()'`. It contains 61 tests.
 - Run the three-region example: `julia --project=. examples/three_region.jl`.
-- Also try `examples/six_region.jl` and `examples/reservoir_integration.jl`.
+- Also try `julia --project=. examples/six_region.jl` and `julia --project=. examples/reservoir_integration.jl`.
 - Use `git` for version control and follow the existing branch naming conventions.
 - Let the GitHub Actions workflows in `.github/workflows/` validate changes.
 
@@ -58,7 +58,7 @@ You are an AI coding assistant working on NeuroPulse.jl (`Project.toml` name: `T
 - Julia is provided via `juliaup`. Use a stable 1.9+ channel (e.g., `1.12`).
 - Standard setup: `julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.test()'`. This runs 61 tests.
 - Run the three-region example: `julia --project=. examples/three_region.jl`.
-- Also try `examples/six_region.jl` and `examples/reservoir_integration.jl`.
+- Also try `julia --project=. examples/six_region.jl` and `julia --project=. examples/reservoir_integration.jl`.
 
 ## Environment notes
 

@@ -1,7 +1,35 @@
 # https://docs.devin.ai/onboard-devin/environment-yaml
 initialize: |
-  # Install juliaup and the project's default Julia channel.
-  curl -fsSL https://install.julialang.org | sh -s -- --yes
+  set -e
+  # Download a pinned, checksum-verified juliaup portable tarball.
+  JULIAUP_VERSION="1.20.7"
+  case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64)
+      ARCH="x86_64-unknown-linux-musl-portable"
+      SHA256="832e6bb2403ff9fb5429981e1bfcabac1ee0282bf68e75d24721a4b8f2f98e5a"
+      ;;
+    Darwin-x86_64)
+      ARCH="x86_64-apple-darwin-portable"
+      SHA256="1daf7261dfdd97cf23d983b5cddff749c32825a6cbe300a22735cf1122e0bc60"
+      ;;
+    Darwin-arm64)
+      ARCH="aarch64-apple-darwin-portable"
+      SHA256="92e3af217f2dc4646c87faa4c8058d2ba2a8163ede869a146abfb7e3026c4394"
+      ;;
+    *)
+      echo "Unsupported platform: $(uname -s)-$(uname -m)"
+      exit 1
+      ;;
+  esac
+  URL="https://github.com/JuliaLang/juliaup/releases/download/v${JULIAUP_VERSION}/juliaup-${JULIAUP_VERSION}-${ARCH}.tar.gz"
+  mkdir -p ~/.juliaup/bin
+  curl -fsSL -o /tmp/juliaup.tar.gz "$URL"
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s  /tmp/juliaup.tar.gz\n' "$SHA256" | sha256sum -c -
+  else
+    printf '%s  /tmp/juliaup.tar.gz\n' "$SHA256" | shasum -a 256 -c -
+  fi
+  tar -xzf /tmp/juliaup.tar.gz -C ~/.juliaup/bin
   echo 'export PATH="$HOME/.juliaup/bin:$PATH"' >> $ENVRC
   export PATH="$HOME/.juliaup/bin:$PATH"
   juliaup add 1.12
