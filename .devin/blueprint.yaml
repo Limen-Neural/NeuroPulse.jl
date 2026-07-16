@@ -1,0 +1,22 @@
+# https://docs.devin.ai/onboard-devin/environment-yaml
+initialize: |
+  # Install juliaup and the project's default Julia channel.
+  curl -fsSL https://install.julialang.org | sh -s -- --yes
+  echo 'export PATH="$HOME/.juliaup/bin:$PATH"' >> $ENVRC
+  export PATH="$HOME/.juliaup/bin:$PATH"
+  juliaup add 1.12
+  juliaup default 1.12
+
+maintenance: |
+  # Keep Julia project dependencies installed.
+  julia --project=. -e 'using Pkg; Pkg.instantiate()'
+
+knowledge:
+  - name: test
+    contents: |
+      julia --project=. -e 'using Pkg; Pkg.test()'
+  - name: examples
+    contents: |
+      julia --project=. examples/three_region.jl
+      julia --project=. examples/six_region.jl
+      julia --project=. examples/reservoir_integration.jl
