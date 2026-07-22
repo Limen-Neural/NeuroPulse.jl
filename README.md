@@ -8,9 +8,10 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Julia-9558B2" alt="Julia">
   <img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="MIT OR Apache-2.0">
-  <a href="https://limen-neural.github.io/NeuroPulse.jl/stable"><img src="https://img.shields.io/badge/docs-stable-blue.svg" alt="Stable docs"></a>
-  <a href="https://limen-neural.github.io/NeuroPulse.jl/dev"><img src="https://img.shields.io/badge/docs-dev-blue.svg" alt="Dev docs"></a>
 </p>
+
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://limen-neural.github.io/NeuroPulse.jl/stable)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://limen-neural.github.io/NeuroPulse.jl/dev)
 
 ---
 
@@ -173,11 +174,8 @@ Those defaults are serviceable, but they are not the final abstraction boundary.
 
 ## Documentation
 
-- [Stable docs](https://Limen-Neural.github.io/NeuroPulse.jl/stable)
-- [Dev docs](https://Limen-Neural.github.io/NeuroPulse.jl/dev)
-
-- [Stable docs](https://limen-neural.github.io/NeuroPulse.jl/stable)
-- [Dev docs](https://limen-neural.github.io/NeuroPulse.jl/dev)
+- [Stable docs](https://limen-neural.github.io/NeuroPulse.jl/stable) (created on first version tag)
+- [Dev docs](https://limen-neural.github.io/NeuroPulse.jl/dev) (updates from `main`)
 
 Source markdown lives in `docs/` (Documenter pages under `docs/src/`):
 
@@ -193,14 +191,14 @@ julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
 julia --project=docs docs/make.jl
 ```
 
-
 ## Migration note
 
 This repository was renamed from `NeuroPulse.jl` (and earlier `SpikenautAttention.jl` or `SpikenautNero.jl`) to `TemporalFocus.jl`.
 
 Migration steps for downstream users:
 
-- replace `Pkg.add("NeuroPulse")` (or `SpikenautAttention`) with `Pkg.add("TemporalFocus")`\n- replace `using NeuroPulse` (or `using SpikenautAttention`) with `using TemporalFocus`
+- replace `Pkg.add("NeuroPulse")` (or `SpikenautAttention`) with `Pkg.add("TemporalFocus")`
+- replace `using NeuroPulse` (or `using SpikenautAttention`) with `using TemporalFocus`
 - update any package metadata or examples that still reference the old name
 
 The NERO algorithm name remains in the current public API via `NeroOrchestrator` and
