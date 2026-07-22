@@ -33,6 +33,7 @@ include("region_router.jl")
 
 # Generic API (preferred)
 export ActivityRegion, RegionRouter, update_routing!, routing_diagnostics, adapt_leak!
+export save_state, load_state!, load_state
 
 # Backward-compatible type aliases
 const LobeState = ActivityRegion

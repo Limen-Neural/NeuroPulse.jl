@@ -265,4 +265,111 @@ using TemporalFocus
         )
     end
 
+
+    # ── Checkpointing (LIM-234 / GH#28) ───────────────────────────────────────
+
+    @testset "save_state / load_state! round-trip" begin
+        router = RegionRouter(n_regions = 3, n_out = 8, region_names = ["A", "B", "C"])
+        for _ = 1:5
+            regions = [
+                ActivityRegion(0.9f0, ones(Float32, 8)),
+                ActivityRegion(0.1f0, 0.2f0 .* ones(Float32, 8)),
+                ActivityRegion(0.0f0, zeros(Float32, 8)),
+            ]
+            update_routing!(router, regions)
+        end
+
+        snap = save_state(router)
+        @test snap isa NamedTuple
+        @test snap.n_regions == 3
+        @test snap.n_out == 8
+        @test snap.tick_count == 5
+        @test snap.routing_weights == router.routing_weights
+        @test snap.readout_ema == router.readout_ema
+        # Snapshot must own independent buffers (not views into the router)
+        @test snap.routing_weights !== router.routing_weights
+        @test snap.readout_ema !== router.readout_ema
+        @test snap.spike_density !== router.spike_density
+        @test snap.prev_routing_weights !== router.prev_routing_weights
+        @test snap.prev_relevance !== router.prev_relevance
+        @test snap.surprise !== router.surprise
+        @test snap.scratch !== router.scratch
+
+        # Capture expected state at the snapshot point
+        expected_weights = copy(router.routing_weights)
+        expected_ema = copy(router.readout_ema)
+        expected_density = copy(router.spike_density)
+        expected_prev_w = copy(router.prev_routing_weights)
+        expected_prev_rel = copy(router.prev_relevance)
+        expected_surprise = copy(router.surprise)
+        expected_scratch = copy(router.scratch)
+        expected_tick = router.tick_count
+
+        # Mutate router away from snapshot
+        for _ = 1:3
+            regions = [ActivityRegion(rand(Float32), rand(Float32, 8)) for _ = 1:3]
+            update_routing!(router, regions)
+        end
+        @test router.tick_count == 8
+        @test router.routing_weights != expected_weights
+
+        # Restore
+        load_state!(router, snap)
+        @test router.tick_count == expected_tick
+        @test router.routing_weights == expected_weights
+        @test router.readout_ema == expected_ema
+        @test router.spike_density == expected_density
+        @test router.prev_routing_weights == expected_prev_w
+        @test router.prev_relevance == expected_prev_rel
+        @test router.surprise == expected_surprise
+        @test router.scratch == expected_scratch
+
+        # load_state alias works
+        mutate_snap = save_state(router)
+        router.tick_count = 0
+        fill!(router.routing_weights, 0.0f0)
+        load_state(router, mutate_snap)
+        @test router.tick_count == expected_tick
+        @test router.routing_weights == expected_weights
+
+        # Further ticks after restore remain consistent with a fresh twin
+        twin = RegionRouter(n_regions = 3, n_out = 8, region_names = ["A", "B", "C"])
+        load_state!(twin, snap)
+        regions = [
+            ActivityRegion(0.5f0, 0.5f0 .* ones(Float32, 8)),
+            ActivityRegion(0.4f0, 0.3f0 .* ones(Float32, 8)),
+            ActivityRegion(0.2f0, 0.1f0 .* ones(Float32, 8)),
+        ]
+        update_routing!(router, regions)
+        update_routing!(twin, regions)
+        @test router.tick_count == twin.tick_count == expected_tick + 1
+        @test router.routing_weights == twin.routing_weights
+        @test router.readout_ema == twin.readout_ema
+        @test router.surprise == twin.surprise
+    end
+
+    @testset "load_state! rejects dimension mismatch" begin
+        router = RegionRouter(n_regions = 4, n_out = 16)
+        other = RegionRouter(n_regions = 3, n_out = 8, region_names = ["A", "B", "C"])
+        update_routing!(other, [ActivityRegion(rand(Float32), rand(Float32, 8)) for _ = 1:3])
+        snap = save_state(other)
+        @test_throws ArgumentError load_state!(router, snap)
+
+        # Same n_regions/n_out labels but wrong vector length
+        bad = (
+            n_regions = 4,
+            n_out = 16,
+            routing_weights = zeros(Float32, 2),
+            readout_ema = zeros(Float32, 4, 16),
+            spike_density = zeros(Float32, 4),
+            prev_routing_weights = zeros(Float32, 4),
+            prev_relevance = zeros(Float32, 4),
+            surprise = zeros(Float32, 4),
+            scratch = zeros(Float32, 16),
+            tick_count = Int64(0),
+        )
+        @test_throws ArgumentError load_state!(router, bad)
+    end
+
+
 end

@@ -259,6 +259,103 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     return nothing
 end
 
+# ── Checkpointing ─────────────────────────────────────────────────────────────
+
+"""
+    save_state(router::RegionRouter) -> NamedTuple
+
+Deep-copy mutable routing state into a serializable `NamedTuple` for checkpointing.
+
+Includes `n_regions` and `n_out` for load-time validation. Array fields are
+independent copies so later `update_routing!` calls do not mutate the snapshot.
+"""
+function save_state(router::RegionRouter)
+    return (
+        n_regions = router.n_regions,
+        n_out = router.n_out,
+        routing_weights = copy(router.routing_weights),
+        readout_ema = copy(router.readout_ema),
+        spike_density = copy(router.spike_density),
+        prev_routing_weights = copy(router.prev_routing_weights),
+        prev_relevance = copy(router.prev_relevance),
+        surprise = copy(router.surprise),
+        scratch = copy(router.scratch),
+        tick_count = router.tick_count,
+    )
+end
+
+"""
+    load_state!(router::RegionRouter, snap) -> RegionRouter
+
+Restore mutable routing state in-place from a snapshot produced by `save_state`.
+
+Throws `ArgumentError` if `n_regions`, `n_out`, or any array size does not match
+the target router. Structural fields (`region_names`, `adjacency_matrix`) are
+not restored — they must already match the experiment configuration.
+"""
+function load_state!(router::RegionRouter, snap)
+    n = router.n_regions
+    n_out = router.n_out
+
+    snap_n = Int(snap.n_regions)
+    snap_n_out = Int(snap.n_out)
+    if snap_n != n || snap_n_out != n_out
+        throw(
+            ArgumentError(
+                "snapshot dimensions (n_regions=$(snap_n), n_out=$(snap_n_out)) do not match router (n_regions=$n, n_out=$n_out)",
+            ),
+        )
+    end
+
+    _check_vec_len(snap.routing_weights, n, :routing_weights)
+    _check_mat_size(snap.readout_ema, (n, n_out), :readout_ema)
+    _check_vec_len(snap.spike_density, n, :spike_density)
+    _check_vec_len(snap.prev_routing_weights, n, :prev_routing_weights)
+    _check_vec_len(snap.prev_relevance, n, :prev_relevance)
+    _check_vec_len(snap.surprise, n, :surprise)
+    if hasproperty(snap, :scratch)
+        _check_vec_len(snap.scratch, n_out, :scratch)
+    end
+
+    copyto!(router.routing_weights, snap.routing_weights)
+    copyto!(router.readout_ema, snap.readout_ema)
+    copyto!(router.spike_density, snap.spike_density)
+    copyto!(router.prev_routing_weights, snap.prev_routing_weights)
+    copyto!(router.prev_relevance, snap.prev_relevance)
+    copyto!(router.surprise, snap.surprise)
+    if hasproperty(snap, :scratch)
+        copyto!(router.scratch, snap.scratch)
+    end
+    router.tick_count = Int64(snap.tick_count)
+
+    return router
+end
+
+"""
+    load_state(router::RegionRouter, snap) -> RegionRouter
+
+Alias for [`load_state!`](@ref). Prefer `load_state!` for the mutating API.
+"""
+const load_state = load_state!
+
+@inline function _check_vec_len(v, expected::Int, name::Symbol)
+    length(v) == expected || throw(
+        ArgumentError(
+            "snapshot $name length $(length(v)) does not match expected $expected",
+        ),
+    )
+    return nothing
+end
+
+@inline function _check_mat_size(m, expected::Tuple{Int,Int}, name::Symbol)
+    size(m) == expected || throw(
+        ArgumentError(
+            "snapshot $name size $(size(m)) does not match expected $expected",
+        ),
+    )
+    return nothing
+end
+
 # ── Diagnostics ───────────────────────────────────────────────────────────────
 
 """
