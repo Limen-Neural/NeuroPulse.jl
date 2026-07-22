@@ -1,11 +1,51 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+"""
+    temporal_weight(dt, τ) -> Float32
+
+Exponential recency weight for a time difference.
+
+Computes `exp(-abs(dt) / τ)`. Closer-in-time spikes receive higher weight.
+
+# Arguments
+- `dt::Real`: time difference between spikes
+- `τ::Real`: positive time constant (converted to `Float32`)
+
+# Returns
+- `Float32` weight in `(0, 1]`
+
+# Throws
+- `ArgumentError` if `τ` is not positive
+"""
 @inline function temporal_weight(dt::Real, τ::Real)
     τ_f32 = Float32(τ)
     τ_f32 > 0f0 || throw(ArgumentError("τ must be positive"))
     return exp(-abs(Float32(dt)) / τ_f32)
 end
 
+"""
+    spike_attention_temporal(source_spikes, context_spikes, readout; τ=1.0f0)
+
+Coincidence attention with exponential temporal decay.
+
+For each source event, accumulates products of source and context spike values
+on matching neuron IDs, scaled by [`temporal_weight`](@ref) of their time
+difference, then applies the readout matrix.
+
+# Arguments
+- `source_spikes::SpikeTrain`: source spike train
+- `context_spikes::SpikeTrain`: context spike train
+- `readout::AbstractMatrix`: readout with one row per neuron (row count must be ≥ 1)
+- `τ::Real`: positive time constant for recency weighting (default `1.0f0`)
+
+# Returns
+- readout vector `transpose(readout) * attention`, where `attention` is a
+  `Vector{Float32}` of length `size(readout, 1)`
+
+# Throws
+- `ArgumentError` if `τ ≤ 0`, the readout has no rows, or a source `neuron_id`
+  is outside `1:size(readout, 1)`
+"""
 function spike_attention_temporal(
     source_spikes::SpikeTrain,
     context_spikes::SpikeTrain,

@@ -18,6 +18,28 @@ end
     return transpose(readout) * weights
 end
 
+"""
+    spike_attention_discrete(source_spikes, context_spikes, readout)
+
+Coincidence-based spike attention without temporal decay.
+
+For each source event, accumulates products of source and context spike values
+on matching neuron IDs, then applies the readout matrix. Timing is ignored;
+only neuron identity and spike values matter.
+
+# Arguments
+- `source_spikes::SpikeTrain`: source spike train
+- `context_spikes::SpikeTrain`: context spike train
+- `readout::AbstractMatrix`: readout with one row per neuron (row count must be ≥ 1)
+
+# Returns
+- readout vector `transpose(readout) * attention`, where `attention` is a
+  `Vector{Float32}` of length `size(readout, 1)`
+
+# Throws
+- `ArgumentError` if the readout has no rows or a source `neuron_id` is outside
+  `1:size(readout, 1)`
+"""
 function spike_attention_discrete(
     source_spikes::SpikeTrain,
     context_spikes::SpikeTrain,

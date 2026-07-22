@@ -1,5 +1,29 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+"""
+    spike_attention_continuous(source_buffer, context_buffer, readout; τ=1.0f0)
+
+Windowed temporal attention over [`TemporalBuffer`](@ref)s.
+
+Like [`spike_attention_temporal`](@ref), but only pairs of events whose absolute
+time difference is within `min(source_buffer.window, context_buffer.window)`
+contribute. Matching neuron IDs are required; contributions are scaled by
+[`temporal_weight`](@ref).
+
+# Arguments
+- `source_buffer::TemporalBuffer`: source events and window
+- `context_buffer::TemporalBuffer`: context events and window
+- `readout::AbstractMatrix`: readout with one row per neuron (row count must be ≥ 1)
+- `τ::Real`: positive time constant for recency weighting (default `1.0f0`)
+
+# Returns
+- readout vector `transpose(readout) * attention`, where `attention` is a
+  `Vector{Float32}` of length `size(readout, 1)`
+
+# Throws
+- `ArgumentError` if `τ ≤ 0`, the readout has no rows, or a source `neuron_id`
+  is outside `1:size(readout, 1)`
+"""
 function spike_attention_continuous(
     source_buffer::TemporalBuffer,
     context_buffer::TemporalBuffer,
