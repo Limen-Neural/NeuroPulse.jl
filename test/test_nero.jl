@@ -24,6 +24,55 @@ using TemporalFocus
         @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-5)
         @test router.tick_count == 0
         @test router.region_names == ["Region1", "Region2", "Region3", "Region4"]
+        @test router.config isa RoutingConfig
+        @test router.config.alpha == TemporalFocus.ALPHA
+        @test router.config.beta == TemporalFocus.BETA
+        @test router.config.gamma == TemporalFocus.GAMMA
+        @test router.config.ema_decay == TemporalFocus.EMA_DECAY
+        @test router.config.min_score == TemporalFocus.MIN_SCORE
+        @test router.config.epsilon == TemporalFocus.EPSILON
+    end
+
+    @testset "RoutingConfig default matches module constants" begin
+        cfg = RoutingConfig()
+        @test cfg.alpha == TemporalFocus.ALPHA
+        @test cfg.beta == TemporalFocus.BETA
+        @test cfg.gamma == TemporalFocus.GAMMA
+        @test cfg.ema_decay == TemporalFocus.EMA_DECAY
+        @test cfg.min_score == TemporalFocus.MIN_SCORE
+        @test cfg.epsilon == TemporalFocus.EPSILON
+    end
+
+    @testset "per-router alpha changes routing_weights (LIM-230 / GH#24)" begin
+        # Same inputs, different alpha → different routing after enough ticks
+        cfg_default = RoutingConfig()
+        cfg_high_alpha = RoutingConfig(
+            0.95f0,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            TemporalFocus.EMA_DECAY,
+            TemporalFocus.MIN_SCORE,
+            TemporalFocus.EPSILON,
+        )
+        router_a = RegionRouter(config = cfg_default)
+        router_b = RegionRouter(config = cfg_high_alpha)
+
+        for _ = 1:40
+            regions = [
+                ActivityRegion(1.0f0, ones(Float32, 16)),
+                ActivityRegion(0.0f0, zeros(Float32, 16)),
+                ActivityRegion(0.0f0, zeros(Float32, 16)),
+                ActivityRegion(0.0f0, zeros(Float32, 16)),
+            ]
+            update_routing!(router_a, regions)
+            update_routing!(router_b, regions)
+        end
+
+        @test router_a.routing_weights != router_b.routing_weights
+        # Higher alpha weights spike density more → region 1 should dominate more
+        @test router_b.routing_weights[1] > router_a.routing_weights[1]
+        @test isapprox(sum(router_a.routing_weights), 1.0f0, atol = 1e-4)
+        @test isapprox(sum(router_b.routing_weights), 1.0f0, atol = 1e-4)
     end
 
     @testset "update_routing! sums to 1.0" begin

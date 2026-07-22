@@ -72,6 +72,43 @@ function default_inhibition_matrix(n_regions::Int)::Matrix{Float32}
     return M
 end
 
+
+# ── Per-router tuning ─────────────────────────────────────────────────────────
+
+"""
+    RoutingConfig
+
+Per-router scoring knobs. Defaults match the module-level ALPHA..EPSILON constants
+so existing callers keep identical behaviour.
+"""
+struct RoutingConfig
+    alpha::Float32
+    beta::Float32
+    gamma::Float32
+    ema_decay::Float32
+    min_score::Float32
+    epsilon::Float32
+
+    function RoutingConfig(alpha, beta, gamma, ema_decay, min_score, epsilon)
+        a = Float32(alpha)
+        b = Float32(beta)
+        g = Float32(gamma)
+        d = Float32(ema_decay)
+        m = Float32(min_score)
+        e = Float32(epsilon)
+        a >= 0.0f0 || throw(ArgumentError("alpha must be non-negative, got $a"))
+        b >= 0.0f0 || throw(ArgumentError("beta must be non-negative, got $b"))
+        g >= 0.0f0 || throw(ArgumentError("gamma must be non-negative, got $g"))
+        0.0f0 <= d <= 1.0f0 || throw(ArgumentError("ema_decay must be in [0,1], got $d"))
+        m >= 0.0f0 || throw(ArgumentError("min_score must be non-negative, got $m"))
+        e > 0.0f0 || throw(
+            ArgumentError("epsilon must be positive to prevent division by zero, got $e"),
+        )
+        new(a, b, g, d, m, e)
+    end
+end
+RoutingConfig() = RoutingConfig(ALPHA, BETA, GAMMA, EMA_DECAY, MIN_SCORE, EPSILON)
+
 # ── Router State ──────────────────────────────────────────────────────────────
 
 """
@@ -95,6 +132,7 @@ Fields:
   surprise           — manifold surprise score per region
   scratch            — reusable scratch buffer (n_out elements)
   tick_count         — global tick counter
+  config             — per-router scoring knobs (`RoutingConfig`)
 """
 mutable struct RegionRouter
     n_regions::Int
@@ -110,11 +148,12 @@ mutable struct RegionRouter
     surprise::Vector{Float32}
     scratch::Vector{Float32}
     tick_count::Int64
+    config::RoutingConfig
 end
 
 """
     RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES,
-                   inhibition_matrix=nothing) -> RegionRouter
+                   inhibition_matrix=nothing, config=RoutingConfig()) -> RegionRouter
 
 Build the static region graph and pre-allocate all working buffers.
 
@@ -127,6 +166,7 @@ function RegionRouter(;
     n_out::Int = 16,
     region_names::Vector{String} = DEFAULT_REGION_NAMES,
     inhibition_matrix::Union{Nothing,AbstractMatrix} = nothing,
+    config::RoutingConfig = RoutingConfig(),
 )
 
     # Auto-generate region names if not enough provided
@@ -168,6 +208,7 @@ function RegionRouter(;
         zeros(Float32, n_regions),
         zeros(Float32, n_out),
         Int64(0),
+        config,
     )
 end
 
@@ -197,6 +238,7 @@ Softmax normalisation → sum(relevance) = 1.0, each ≥ MIN_SCORE.
 function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     router.tick_count += 1
     n = router.n_regions
+    cfg = router.config
     raw = router.prev_relevance   # reuse buffer (prev no longer needed this tick)
 
     # ── Stage 1-3: per-region signal collection ───────────────────────────
@@ -209,12 +251,12 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         # 2. Readout EMA update (in-place)
         copyto!(router.scratch, region.output)
         @views ema_row = router.readout_ema[i, :]
-        ema_row .= (1.0f0 - EMA_DECAY) .* ema_row .+ EMA_DECAY .* router.scratch
+        ema_row .= (1.0f0 - cfg.ema_decay) .* ema_row .+ cfg.ema_decay .* router.scratch
 
         # 3. Manifold surprise: |new - ema| / (|ema| + ε)
         router.scratch .-= ema_row      # scratch ← delta
         delta_norm = norm(router.scratch)
-        ema_norm = norm(ema_row) + EPSILON
+        ema_norm = norm(ema_row) + cfg.epsilon
         router.surprise[i] = delta_norm / ema_norm
 
         # 4. Momentum
@@ -222,7 +264,9 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
 
         # 5. Raw score
         raw[i] =
-            ALPHA * router.spike_density[i] + BETA * router.surprise[i] + GAMMA * momentum
+            cfg.alpha * router.spike_density[i] +
+            cfg.beta * router.surprise[i] +
+            cfg.gamma * momentum
     end
 
     # ── Stage 4: cross-region graph inhibition ────────────────────────────
@@ -234,7 +278,7 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
                 inh_sum += router.inhibition_matrix[src, dst] * raw[src]
             end
         end
-        inhibited[dst] = max(raw[dst] - inh_sum, MIN_SCORE)
+        inhibited[dst] = max(raw[dst] - inh_sum, cfg.min_score)
     end
 
     # ── Stage 5: softmax normalisation ────────────────────────────────────
@@ -244,14 +288,14 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         inhibited[i] = exp(inhibited[i] - max_val)
         s += inhibited[i]
     end
-    inhibited ./= (s + EPSILON)
+    inhibited ./= (s + cfg.epsilon)
 
     for i = 1:n
-        if inhibited[i] < MIN_SCORE
-            inhibited[i] = MIN_SCORE
+        if inhibited[i] < cfg.min_score
+            inhibited[i] = cfg.min_score
         end
     end
-    inhibited ./= (sum(inhibited) + EPSILON)
+    inhibited ./= (sum(inhibited) + cfg.epsilon)
 
     # Snapshot current weights for next tick's momentum calculation
     copyto!(router.prev_routing_weights, router.routing_weights)
