@@ -43,6 +43,17 @@ using TemporalFocus
         @test cfg.epsilon == TemporalFocus.EPSILON
     end
 
+    @testset "RoutingConfig rejects invalid epsilon" begin
+        @test_throws ArgumentError RoutingConfig(
+            TemporalFocus.ALPHA,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            TemporalFocus.EMA_DECAY,
+            TemporalFocus.MIN_SCORE,
+            0.0f0,
+        )
+    end
+
     @testset "per-router alpha changes routing_weights (LIM-230 / GH#24)" begin
         # Same inputs, different alpha → different routing after enough ticks
         cfg_default = RoutingConfig()
