@@ -533,5 +533,54 @@ using TemporalFocus
         @test occursin("region_names", sprint(showerror, err_names))
     end
 
+# ── adapt_leak! (LIM-233 / GH#27) ──────────────────────────────────────────
+
+    @testset "adapt_leak! default fan-speed adapter" begin
+        leak = Ref(0.0f0)
+        adapt_leak!(leak, 0)
+        @test leak[] == 0.01f0
+
+        adapt_leak!(leak, 100)
+        @test leak[] == 0.25f0
+
+        adapt_leak!(leak, 50)
+        @test isapprox(leak[], 0.13f0, atol = 1e-5)
+
+        # values outside [0, 100] clamp to endpoints
+        adapt_leak!(leak, -10)
+        @test leak[] == 0.01f0
+        adapt_leak!(leak, 200)
+        @test leak[] == 0.25f0
+    end
+
+    @testset "adapt_leak! custom min/max" begin
+        leak = Ref(0.0f0)
+        adapt_leak!(leak, 0; min_leak = 0.05f0, max_leak = 0.50f0)
+        @test leak[] == 0.05f0
+
+        adapt_leak!(leak, 100; min_leak = 0.05f0, max_leak = 0.50f0)
+        @test leak[] == 0.50f0
+
+        adapt_leak!(leak, 50; min_leak = 0.05f0, max_leak = 0.50f0)
+        @test isapprox(leak[], 0.275f0, atol = 1e-5)
+    end
+
+    @testset "adapt_leak! custom stress_adapter" begin
+        leak = Ref(0.0f0)
+        # identity adapter: stress already in [0, 1]
+        unit_adapter = s -> Float32(s)
+        adapt_leak!(leak, 0.0; stress_adapter = unit_adapter)
+        @test leak[] == 0.01f0
+
+        adapt_leak!(leak, 1.0; stress_adapter = unit_adapter)
+        @test leak[] == 0.25f0
+
+        adapt_leak!(leak, 0.5; stress_adapter = unit_adapter)
+        @test isapprox(leak[], 0.13f0, atol = 1e-5)
+
+        # custom adapter + custom min/max
+        adapt_leak!(leak, 0.25; min_leak = 0.1f0, max_leak = 0.9f0, stress_adapter = unit_adapter)
+        @test isapprox(leak[], 0.1f0 + 0.25f0 * (0.9f0 - 0.1f0), atol = 1e-5)
+    end
 
 end
