@@ -264,10 +264,11 @@ end
 """
     save_state(router::RegionRouter) -> NamedTuple
 
-Deep-copy mutable routing state into a serializable `NamedTuple` for checkpointing.
+Copy mutable routing state into a serializable `NamedTuple` for checkpointing.
 
 Includes `n_regions` and `n_out` for load-time validation. Array fields are
-independent copies so later `update_routing!` calls do not mutate the snapshot.
+independent copies (`copy`) so later `update_routing!` calls do not mutate the
+snapshot. Element types are immutable (`Float32`), so `copy` is sufficient.
 """
 function save_state(router::RegionRouter)
     return (
@@ -325,6 +326,9 @@ function load_state!(router::RegionRouter, snap)
     copyto!(router.surprise, snap.surprise)
     if hasproperty(snap, :scratch)
         copyto!(router.scratch, snap.scratch)
+    else
+        # Working buffer only; zero when absent so restore is deterministic.
+        fill!(router.scratch, 0.0f0)
     end
     router.tick_count = Int64(snap.tick_count)
 
@@ -349,9 +353,7 @@ end
 
 @inline function _check_mat_size(m, expected::Tuple{Int,Int}, name::Symbol)
     size(m) == expected || throw(
-        ArgumentError(
-            "snapshot $name size $(size(m)) does not match expected $expected",
-        ),
+        ArgumentError("snapshot $name size $(size(m)) does not match expected $expected"),
     )
     return nothing
 end

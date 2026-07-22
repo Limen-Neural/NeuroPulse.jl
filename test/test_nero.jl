@@ -351,7 +351,10 @@ using TemporalFocus
     @testset "load_state! rejects dimension mismatch" begin
         router = RegionRouter(n_regions = 4, n_out = 16)
         other = RegionRouter(n_regions = 3, n_out = 8, region_names = ["A", "B", "C"])
-        update_routing!(other, [ActivityRegion(rand(Float32), rand(Float32, 8)) for _ = 1:3])
+        update_routing!(
+            other,
+            [ActivityRegion(rand(Float32), rand(Float32, 8)) for _ = 1:3],
+        )
         snap = save_state(other)
         @test_throws ArgumentError load_state!(router, snap)
 
