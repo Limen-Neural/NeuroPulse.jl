@@ -53,9 +53,10 @@ const NERO_INHIBIT = INHIBIT
 
 Build the default cross-region inhibition matrix.
 
-- For `n_regions == 4`: copy of the historical `INHIBIT` layout.
+- For `n_regions == 4`: copy of the historical `INHIBIT` layout (asymmetric;
+  e.g. `INHIBIT[1,2] ≠ INHIBIT[2,1]`). Preserved for backward compatibility.
 - Otherwise: zero diagonal; off-diagonal lateral inhibition that decays with
-  ring distance, `0.08f0 / abs(i - j)`.
+  index distance, `0.08f0 / abs(i - j)` (symmetric under `i ↔ j`).
 """
 function default_inhibition_matrix(n_regions::Int)::Matrix{Float32}
     if n_regions == 4
