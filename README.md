@@ -8,6 +8,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/language-Julia-9558B2" alt="Julia">
   <img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="MIT OR Apache-2.0">
+  <a href="https://limen-neural.github.io/NeuroPulse.jl/stable"><img src="https://img.shields.io/badge/docs-stable-blue.svg" alt="Stable docs"></a>
+  <a href="https://limen-neural.github.io/NeuroPulse.jl/dev"><img src="https://img.shields.io/badge/docs-dev-blue.svg" alt="Dev docs"></a>
 </p>
 
 ---
@@ -171,12 +173,26 @@ Those defaults are serviceable, but they are not the final abstraction boundary.
 
 ## Documentation
 
-Additional docs live in `docs/`:
+- [Stable docs](https://Limen-Neural.github.io/NeuroPulse.jl/stable)
+- [Dev docs](https://Limen-Neural.github.io/NeuroPulse.jl/dev)
 
-- `docs/overview.md` — architecture, scope, and intended usage
-- `docs/api.md` — exported types/functions and behavior notes
+- [Stable docs](https://limen-neural.github.io/NeuroPulse.jl/stable)
+- [Dev docs](https://limen-neural.github.io/NeuroPulse.jl/dev)
+
+Source markdown lives in `docs/` (Documenter pages under `docs/src/`):
+
+- `docs/overview.md` / `docs/src/overview.md` — architecture, scope, and intended usage
+- `docs/api.md` / `docs/src/api.md` — exported types/functions and behavior notes
 - `docs/interop.md` — frozen data-shape / interop contract (rates, readouts, routing weights)
-- `docs/roadmap.md` — gaps, next cleanup targets, and candid project status
+- `docs/roadmap.md` / `docs/src/roadmap.md` — gaps, next cleanup targets, and candid project status
+
+Build locally with:
+
+```bash
+julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
+julia --project=docs docs/make.jl
+```
+
 
 ## Migration note
 
