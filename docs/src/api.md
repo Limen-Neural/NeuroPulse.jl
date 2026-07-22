@@ -4,40 +4,55 @@ This document summarizes the exported API as it exists today.
 
 ## Exported types and functions
 
+Preferred (generic) names:
+
 ```julia
-LobeState
-NeroOrchestrator
-update_relevance!
-nero_diagnostics
+ActivityRegion
+RegionRouter
+update_routing!
+routing_diagnostics
 adapt_leak!
 ```
 
-## `LobeState`
+Legacy aliases (same objects):
 
 ```julia
-LobeState(last_spike_rate::Float32, output::Vector{Float32})
-LobeState(n_out::Int)
+LobeState          # === ActivityRegion
+NeroOrchestrator   # === RegionRouter
+update_relevance!  # === update_routing!
+nero_diagnostics   # === routing_diagnostics
 ```
 
-Compact per-component state consumed by `update_relevance!`.
+## `ActivityRegion` / `LobeState`
+
+```julia
+ActivityRegion(last_spike_rate::Float32, output::Vector{Float32})
+ActivityRegion(n_out::Int)
+```
+
+Compact per-region state consumed by `update_routing!`.
 
 Fields:
 - `last_spike_rate`: normalized activity estimate in `[0, 1]`
 - `output`: readout vector used for EMA/surprise tracking
 
 Notes:
-- `output` width should match the orchestrator's `n_out`
-- `LobeState(n_out)` creates a zeroed placeholder
+- `output` width should match the router's `n_out`
+- `ActivityRegion(n_out)` creates a zeroed placeholder
+- the type is immutable; rebuild or replace vector entries when rates/readouts change
+- `LobeState` is a constant alias of `ActivityRegion`
 
-## `NeroOrchestrator`
+## `RegionRouter` / `NeroOrchestrator`
 
 ```julia
-NeroOrchestrator(; n_lobes=4, n_out=16, lobe_names=NERO_DEFAULT_LOBE_NAMES)
+RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES)
 ```
 
-Mutable routing state.
+Mutable routing state. `NeroOrchestrator` is a constant alias of `RegionRouter`
+(same constructor keywords — there is no `n_lobes` / `lobe_names` kwarg).
 
 Important fields:
+- `n_regions`, `n_out`
 - `routing_weights`
 - `readout_ema`
 - `spike_density`
@@ -49,38 +64,38 @@ Important fields:
 Notes:
 - the hot path is preallocated and in-place
 - default names are historical/example defaults, not required semantics
-- callers can provide custom `lobe_names`
+- callers can provide custom `region_names`
 
-## `update_relevance!`
+## `update_routing!` / `update_relevance!`
 
 ```julia
-update_relevance!(nero::NeroOrchestrator, lobes::Vector{LobeState})
+update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
 ```
 
 Per-tick routing update.
 
 Behavior:
 - increments `tick_count`
-- updates per-component EMA state
+- updates per-region EMA state
 - computes surprise and momentum
 - applies inhibition
 - updates `routing_weights`
 
 Expected caller guarantees:
-- `length(lobes) == nero.n_lobes`
-- each `lobe.output` matches `nero.n_out`
+- `length(regions) == router.n_regions`
+- each `region.output` matches `router.n_out`
 - spike-rate values are already normalized to a meaningful scale for the caller
 
-## `nero_diagnostics`
+## `routing_diagnostics` / `nero_diagnostics`
 
 ```julia
-nero_diagnostics(nero::NeroOrchestrator)::String
+routing_diagnostics(router::RegionRouter)::String
 ```
 
 Returns a short string summary including:
 - current tick
-- per-component routing weights
-- dominant component
+- per-region routing weights
+- dominant region
 - surprise scores
 
 Useful for logs, debugging, and lightweight monitoring.
@@ -102,9 +117,9 @@ Notes:
 
 These are current limitations, not hidden behavior:
 
-- the package name is generalized, but some exported symbols still carry NERO naming
+- the package name is generalized (`TemporalFocus`); the GitHub repo is still `NeuroPulse.jl`
+- legacy NERO aliases remain exported for compatibility
 - no higher-level config object exists for the inhibition matrix or scoring constants
 - defaults still imply a four-component layout
-- there is not yet a first-class generic `ComponentState` / `RouterState` naming pass
 
 That is part of the package's current stage: usable now, but not yet the final API shape.
