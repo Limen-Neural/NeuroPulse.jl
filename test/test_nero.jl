@@ -565,6 +565,25 @@ using TemporalFocus
         @test isapprox(leak[], 0.275f0, atol = 1e-5)
     end
 
+    @testset "adapt_leak! Real kwargs" begin
+        leak = Ref(0.0f0)
+        # Float64 kwargs accepted and converted to Float32 internally
+        adapt_leak!(leak, 0; min_leak = 0.05, max_leak = 0.50)
+        @test leak[] == 0.05f0
+
+        adapt_leak!(leak, 100; min_leak = 0.05, max_leak = 0.50)
+        @test leak[] == 0.50f0
+
+        adapt_leak!(leak, 50; min_leak = 0.05, max_leak = 0.50)
+        @test isapprox(leak[], 0.275f0, atol = 1e-5)
+    end
+
+    @testset "adapt_leak! inverted bounds" begin
+        leak = Ref(0.0f0)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = 0.5f0, max_leak = 0.1f0)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = 0.5, max_leak = 0.1)
+    end
+
     @testset "adapt_leak! custom stress_adapter" begin
         leak = Ref(0.0f0)
         # identity adapter: stress already in [0, 1]
@@ -579,7 +598,13 @@ using TemporalFocus
         @test isapprox(leak[], 0.13f0, atol = 1e-5)
 
         # custom adapter + custom min/max
-        adapt_leak!(leak, 0.25; min_leak = 0.1f0, max_leak = 0.9f0, stress_adapter = unit_adapter)
+        adapt_leak!(
+            leak,
+            0.25;
+            min_leak = 0.1f0,
+            max_leak = 0.9f0,
+            stress_adapter = unit_adapter,
+        )
         @test isapprox(leak[], 0.1f0 + 0.25f0 * (0.9f0 - 0.1f0), atol = 1e-5)
     end
 

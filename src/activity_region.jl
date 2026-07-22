@@ -24,8 +24,8 @@ ActivityRegion(n_out::Int) = ActivityRegion(0.0f0, zeros(Float32, n_out))
 
 """
     adapt_leak!(leak_rate::Ref{Float32}, stress::Real;
-                min_leak::Float32=0.01f0,
-                max_leak::Float32=0.25f0,
+                min_leak::Real=0.01f0,
+                max_leak::Real=0.25f0,
                 stress_adapter=nothing) -> nothing
 
 Adapt the base leak rate based on a generic stress signal.
@@ -40,7 +40,7 @@ other stress conditions.
 - `stress` is any real-valued stress signal.
 - When `stress_adapter` is `nothing` (default), `stress` is treated as a
   fan-speed-like percentage in `[0, 100]` and mapped to the unit interval via
-  `clamp(stress / 100, 0, 1)` (preserves previous behavior).
+  `clamp(Float32(stress / 100), 0, 1)` (preserves previous behavior).
 - When `stress_adapter` is provided, it is called as `stress_adapter(stress)`
   and must return a value in `[0, 1]` (callers are responsible for clamping if
   needed). That unit value is then linearly interpolated between `min_leak` and
@@ -50,20 +50,33 @@ other stress conditions.
 
   - `leak_rate` — reference to the current leak rate (modified in-place)
   - `stress` — stress signal (default interpretation: fan speed percentage)
-  - `min_leak` — leak at zero stress (default `0.01f0`)
-  - `max_leak` — leak at full stress (default `0.25f0`)
+  - `min_leak` — leak at zero stress (default `0.01f0`); any `Real`, converted to `Float32`
+  - `max_leak` — leak at full stress (default `0.25f0`); any `Real`, converted to `Float32`
   - `stress_adapter` — optional callable `stress -> [0,1]`; `nothing` uses the
     default fan-speed adapter
+
+# Errors
+
+Throws `ArgumentError` if `min_leak > max_leak` after conversion to `Float32`.
 """
-function adapt_leak!(leak_rate::Ref{Float32}, stress::Real;
-                     min_leak::Float32 = 0.01f0,
-                     max_leak::Float32 = 0.25f0,
-                     stress_adapter = nothing)
+function adapt_leak!(
+    leak_rate::Ref{Float32},
+    stress::Real;
+    min_leak::Real = 0.01f0,
+    max_leak::Real = 0.25f0,
+    stress_adapter = nothing,
+)
+    lo = Float32(min_leak)
+    hi = Float32(max_leak)
+    if lo > hi
+        throw(ArgumentError("min_leak ($lo) must be <= max_leak ($hi)"))
+    end
     if stress_adapter === nothing
-        normalized = clamp(Float32(stress) / 100.0f0, 0.0f0, 1.0f0)
+        # divide in wider precision first, then narrow (avoids Float32 stress truncation)
+        normalized = clamp(Float32(stress / 100), 0.0f0, 1.0f0)
     else
         normalized = Float32(stress_adapter(stress))
     end
-    leak_rate[] = min_leak + normalized * (max_leak - min_leak)
+    leak_rate[] = lo + normalized * (hi - lo)
     return nothing
 end
