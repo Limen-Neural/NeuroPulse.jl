@@ -40,16 +40,20 @@ What this means in practice:
 
 TemporalFocus owns spike-driven relevance routing logic:
 
-- `LobeState` as a compact per-component summary
-- `NeroOrchestrator` as the mutable routing state
-- `update_relevance!` as the per-tick routing update
-- `nero_diagnostics` for lightweight inspection/logging
+- `ActivityRegion` as a compact per-region summary (`Float32` rate in `[0,1]`, readout of length `n_out`)
+- `RegionRouter` as the mutable routing state (`routing_weights` length `n_regions`, sum ~1)
+- `update_routing!` as the per-tick routing update
+- `routing_diagnostics` for lightweight inspection/logging
 - `adapt_leak!` as a small optional helper for stress-aware leak adaptation
+
+The frozen interop shapes (and what the package deliberately does **not** own — e.g. spike
+event lists / full trains) are documented in [`docs/interop.md`](docs/interop.md).
 
 ## What TemporalFocus does not own
 
 TemporalFocus does not own:
 
+- spike event lists or full spike trains
 - full neuron or reservoir simulation
 - training loops or plasticity pipelines
 - token embeddings or transformer execution
@@ -168,6 +172,7 @@ Additional docs live in `docs/`:
 
 - `docs/overview.md` — architecture, scope, and intended usage
 - `docs/api.md` — exported types/functions and behavior notes
+- `docs/interop.md` — frozen data-shape / interop contract (rates, readouts, routing weights)
 - `docs/roadmap.md` — gaps, next cleanup targets, and candid project status
 
 ## Migration note

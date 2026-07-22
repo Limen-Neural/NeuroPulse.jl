@@ -1,5 +1,9 @@
 # TemporalFocus API notes
 
+For the frozen interop data-shape contract (Float32 rates in `[0,1]`, readout length
+`n_out`, `routing_weights` length `n_regions` summing ~1, no owned spike trains), see
+[`interop.md`](interop.md).
+
 This document summarizes the exported API as it exists today.
 
 ## Exported types and functions
