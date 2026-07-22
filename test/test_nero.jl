@@ -164,4 +164,94 @@ using TemporalFocus
         @test TemporalFocus.NERO_INHIBIT === TemporalFocus.INHIBIT
     end
 
+    # ── Configurable inhibition matrix (LIM-229 / GH#23) ─────────────────────
+
+    @testset "inhibition_matrix: NERO_INHIBIT === INHIBIT" begin
+        @test TemporalFocus.NERO_INHIBIT === TemporalFocus.INHIBIT
+    end
+
+    @testset "inhibition_matrix: n=4 default equals historical INHIBIT" begin
+        router = RegionRouter()
+        @test hasproperty(router, :inhibition_matrix)
+        @test size(router.inhibition_matrix) == (4, 4)
+        @test router.inhibition_matrix == TemporalFocus.INHIBIT
+        @test eltype(router.inhibition_matrix) == Float32
+    end
+
+    @testset "inhibition_matrix: n=6 default has zero diagonal and positive off-diag" begin
+        router = RegionRouter(n_regions = 6, n_out = 8)
+        M = router.inhibition_matrix
+        @test size(M) == (6, 6)
+        @test eltype(M) == Float32
+        for i = 1:6
+            @test M[i, i] == 0.0f0
+        end
+        @test any(M[i, j] > 0 for i = 1:6, j = 1:6 if i != j)
+    end
+
+    @testset "inhibition_matrix: n=6 update_routing! runs without error" begin
+        router = RegionRouter(n_regions = 6, n_out = 8)
+        regions = [ActivityRegion(rand(Float32), rand(Float32, 8)) for _ = 1:6]
+        update_routing!(router, regions)
+        @test length(router.routing_weights) == 6
+        @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-4)
+        @test router.tick_count == 1
+    end
+
+    @testset "inhibition_matrix: non-zero inhibition differs from zero matrix" begin
+        n = 4
+        n_out = 8
+        names = ["A", "B", "C", "D"]
+        regions = [
+            ActivityRegion(1.0f0, ones(Float32, n_out)),
+            ActivityRegion(0.8f0, 0.8f0 .* ones(Float32, n_out)),
+            ActivityRegion(0.2f0, 0.2f0 .* ones(Float32, n_out)),
+            ActivityRegion(0.1f0, 0.1f0 .* ones(Float32, n_out)),
+        ]
+
+        r_zero = RegionRouter(
+            n_regions = n,
+            n_out = n_out,
+            region_names = names,
+            inhibition_matrix = zeros(Float32, n, n),
+        )
+        r_inh = RegionRouter(
+            n_regions = n,
+            n_out = n_out,
+            region_names = names,
+            inhibition_matrix = TemporalFocus.INHIBIT,
+        )
+        for _ = 1:10
+            update_routing!(r_zero, regions)
+            update_routing!(r_inh, regions)
+        end
+        @test r_zero.routing_weights != r_inh.routing_weights
+    end
+
+    @testset "inhibition_matrix: custom matrix accepted" begin
+        custom = Float32[
+            0.0 0.1 0.0
+            0.05 0.0 0.1
+            0.0 0.05 0.0
+        ]
+        router = RegionRouter(
+            n_regions = 3,
+            n_out = 4,
+            region_names = ["A", "B", "C"],
+            inhibition_matrix = custom,
+        )
+        @test router.inhibition_matrix == custom
+        @test eltype(router.inhibition_matrix) == Float32
+        regions = [ActivityRegion(rand(Float32), rand(Float32, 4)) for _ = 1:3]
+        update_routing!(router, regions)
+        @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-4)
+    end
+
+    @testset "inhibition_matrix: wrong size errors" begin
+        @test_throws AssertionError RegionRouter(
+            n_regions = 3,
+            inhibition_matrix = zeros(Float32, 2, 2),
+        )
+    end
+
 end
