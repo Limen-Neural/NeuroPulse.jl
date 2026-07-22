@@ -145,15 +145,18 @@ The raw scores are then:
 ## Public API
 
 ```julia
-LobeState(last_spike_rate::Float32, output::Vector{Float32})
-LobeState(n_out::Int)
+ActivityRegion(last_spike_rate::Float32, output::Vector{Float32})
+ActivityRegion(n_out::Int)
 
-NeroOrchestrator(; n_lobes=4, n_out=16, lobe_names=NERO_DEFAULT_LOBE_NAMES)
+RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES)
 
-update_relevance!(nero::NeroOrchestrator, lobes::Vector{LobeState})
-nero_diagnostics(nero::NeroOrchestrator)
+update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
+routing_diagnostics(router::RegionRouter)
 adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Float32)
 ```
+
+Legacy aliases (`LobeState`, `NeroOrchestrator`, `update_relevance!`, `nero_diagnostics`)
+resolve to the same types/functions; use the preferred names above for new code.
 
 ## Default assumptions and current limitations
 

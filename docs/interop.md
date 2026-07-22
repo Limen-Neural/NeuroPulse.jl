@@ -81,11 +81,11 @@ Mutable routing state. Pre-allocated at construction; the hot path of
 | `n_regions` | `Int` | Number of regions |
 | `n_out` | `Int` | Readout width per region |
 | `region_names` | `Vector{String}` length `n_regions` | Human-readable labels |
-| `adjacency_matrix` | `Matrix{Float32}` `n_regions × n_regions` | Directed adjacency weights |
+| `adjacency_matrix` | `Matrix{Float32}` `n_regions × n_regions` | Binary edge **mask** (`> 0` enables inhibition); magnitude is not a continuous weight in the hot path |
 | `routing_weights` | `Vector{Float32}` length `n_regions` | **Primary output**; sums to **~1** after each tick |
 | `readout_ema` | `Matrix{Float32}` `n_regions × n_out` | Per-region EMA of readouts |
 | `spike_density` | `Vector{Float32}` length `n_regions` | Last tick’s rates (copy of inputs) |
-| `prev_routing_weights` | `Vector{Float32}` length `n_regions` | Previous weights (momentum) |
+| `prev_routing_weights` | `Vector{Float32}` length `n_regions` | Momentum buffer; after a normal `update_routing!` call it equals the just-written `routing_weights` (not a preserved prior-tick snapshot for external readers) |
 | `prev_relevance` | `Vector{Float32}` length `n_regions` | Scratch / last raw scores |
 | `surprise` | `Vector{Float32}` length `n_regions` | Manifold surprise per region |
 | `scratch` | `Vector{Float32}` length `n_out` | Hot-path scratch buffer |
@@ -117,7 +117,7 @@ update_routing!(router::RegionRouter, regions::Vector{ActivityRegion}) -> nothin
 
 | Output (in-place on `router`) | Contract |
 |-------------------------------|----------|
-| `router.routing_weights` | length `n_regions`, elements ≥ floor (`MIN_SCORE`), **sum ≈ 1** |
+| `router.routing_weights` | length `n_regions`, **positive** entries, **sum ≈ 1** (`MIN_SCORE` clamps pre-/mid-normalization scores only; final entries may fall below `MIN_SCORE` after re-normalization) |
 | `router.surprise`, `router.spike_density`, … | updated diagnostics; readable after the call |
 | return value | `nothing` (consume `routing_weights`, not a return vector) |
 
