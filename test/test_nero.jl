@@ -178,6 +178,17 @@ using TemporalFocus
         @test eltype(router.inhibition_matrix) == Float32
     end
 
+    @testset "inhibition_matrix: n=3 default equals INHIBIT[1:3,1:3]" begin
+        router = RegionRouter(n_regions = 3, n_out = 8)
+        expected = TemporalFocus.INHIBIT[1:3, 1:3]
+        @test size(router.inhibition_matrix) == (3, 3)
+        @test router.inhibition_matrix == expected
+        @test eltype(router.inhibition_matrix) == Float32
+        # Historical asymmetry preserved (2→1 is 0.04, not geometric 0.08)
+        @test router.inhibition_matrix[2, 1] == 0.04f0
+        @test router.inhibition_matrix[1, 2] == 0.08f0
+    end
+
     @testset "inhibition_matrix: n=6 default has zero diagonal and positive off-diag" begin
         router = RegionRouter(n_regions = 6, n_out = 8)
         M = router.inhibition_matrix
@@ -247,8 +258,8 @@ using TemporalFocus
         @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-4)
     end
 
-    @testset "inhibition_matrix: wrong size errors" begin
-        @test_throws AssertionError RegionRouter(
+    @testset "inhibition_matrix: wrong size throws ArgumentError" begin
+        @test_throws ArgumentError RegionRouter(
             n_regions = 3,
             inhibition_matrix = zeros(Float32, 2, 2),
         )

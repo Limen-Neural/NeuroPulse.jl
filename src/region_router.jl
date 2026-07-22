@@ -53,14 +53,15 @@ const NERO_INHIBIT = INHIBIT
 
 Build the default cross-region inhibition matrix.
 
-- For `n_regions == 4`: copy of the historical `INHIBIT` layout (asymmetric;
-  e.g. `INHIBIT[1,2] ≠ INHIBIT[2,1]`). Preserved for backward compatibility.
-- Otherwise: zero diagonal; off-diagonal lateral inhibition that decays with
-  index distance, `0.08f0 / abs(i - j)` (symmetric under `i ↔ j`).
+- For `n_regions <= 4`: top-left `n_regions × n_regions` slice of the historical
+  asymmetric `INHIBIT` layout (copy). Preserves pre-LIM-229 behavior for smaller
+  routers that previously applied `INHIBIT[1:n, 1:n]` via bounds checks.
+- For `n_regions > 4`: zero diagonal; off-diagonal lateral inhibition that decays
+  with index distance, `0.08f0 / abs(i - j)` (symmetric under `i ↔ j`).
 """
 function default_inhibition_matrix(n_regions::Int)::Matrix{Float32}
-    if n_regions == 4
-        return copy(INHIBIT)
+    if n_regions <= 4
+        return copy(INHIBIT[1:n_regions, 1:n_regions])
     end
     M = zeros(Float32, n_regions, n_regions)
     for i = 1:n_regions, j = 1:n_regions
@@ -144,7 +145,13 @@ function RegionRouter(;
         inh = default_inhibition_matrix(n_regions)
     else
         inh = Matrix{Float32}(inhibition_matrix)
-        @assert size(inh) == (n_regions, n_regions) "inhibition_matrix must be n_regions × n_regions"
+        if size(inh) != (n_regions, n_regions)
+            throw(
+                ArgumentError(
+                    "inhibition_matrix must be n_regions × n_regions, got $(size(inh)) for n_regions=$n_regions",
+                ),
+            )
+        end
     end
 
     RegionRouter(
