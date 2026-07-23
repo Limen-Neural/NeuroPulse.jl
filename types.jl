@@ -66,6 +66,9 @@ end
 TemporalBuffer(window::Real, events::AbstractVector{<:SpikeEvent} = SpikeEvent[]) =
     TemporalBuffer(Float32(window), collect(events))
 
+Base.isempty(train::SpikeTrain) = isempty(train.events)
+Base.isempty(buffer::TemporalBuffer) = isempty(buffer.events)
+
 """
     prune!(buffer::TemporalBuffer, current_time) -> TemporalBuffer
 
