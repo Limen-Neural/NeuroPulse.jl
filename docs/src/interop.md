@@ -81,7 +81,8 @@ Mutable routing state. Pre-allocated at construction; the hot path of
 | `n_regions` | `Int` | Number of regions |
 | `n_out` | `Int` | Readout width per region |
 | `region_names` | `Vector{String}` length `n_regions` | Human-readable labels |
-| `adjacency_matrix` | `Matrix{Float32}` `n_regions × n_regions` | Binary edge **mask**: `adjacency_matrix[src, dst] > 0` **and** a defined inhibition table entry for `(src, dst)` are both required for lateral inhibition. Magnitude is not a continuous weight in the hot path. On current `main`, coefficients come from the fixed 4×4 `INHIBIT` matrix, so pairs with `src` or `dst` **> 4** receive **no** inhibition even if adjacency is positive. Configurable full `n×n` `inhibition_matrix` is tracked in LIM-229 / GH#23 (PR #34) and is the intended long-term contract. |
+| `adjacency_matrix` | `Matrix{Float32}` `n_regions × n_regions` | Binary edge **mask**: `adjacency_matrix[src, dst] > 0` gates whether lateral inhibition is applied for that pair. Magnitude is not a continuous weight in the hot path. |
+| `inhibition_matrix` | `Matrix{Float32}` `n_regions × n_regions` | Lateral inhibition coefficients. Default: for `n_regions ≤ 4`, `INHIBIT[1:n, 1:n]` (historical 4×4 table, top-left slice); for `n > 4`, a scaled lateral matrix. Callers may pass a custom full `n×n` matrix via the constructor. |
 | `routing_weights` | `Vector{Float32}` length `n_regions` | **Primary output**; sums to **~1** after each tick |
 | `readout_ema` | `Matrix{Float32}` `n_regions × n_out` | Per-region EMA of readouts |
 | `spike_density` | `Vector{Float32}` length `n_regions` | Last tick’s rates (copy of inputs) |
@@ -94,10 +95,13 @@ Mutable routing state. Pre-allocated at construction; the hot path of
 Constructor:
 
 ```julia
-RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES)
+RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES,
+               inhibition_matrix=nothing)
 ```
 
-Initial `routing_weights` are uniform (`1 / n_regions`).
+Initial `routing_weights` are uniform (`1 / n_regions`). When `inhibition_matrix`
+is `nothing`, a default matrix is generated as described above; otherwise the
+provided matrix must be `n_regions × n_regions`.
 
 **Legacy alias:** `NeroOrchestrator === RegionRouter`.
 
@@ -150,10 +154,14 @@ The following are **not** package types and are **not** part of this freeze:
 - Spike trains / event lists (`Vector` of times or `(neuron, t)` pairs)
 - Full membrane or synapse tensors
 - Shared “modulator” blobs beyond `ActivityRegion.output`
-- Config objects for α/β/γ or a full `n×n` inhibition matrix on current `main` (fixed 4×4 `INHIBIT` lives in source; LIM-229 / GH#23 / PR #34 tracks the configurable `inhibition_matrix`)
+- Config objects for α/β/γ scoring weights (still module-level constants)
 
-If a workflow needs those, they belong in the surrounding SNN/runtime package;
-only the compact summaries cross into TemporalFocus.
+Inhibition **is** configurable via `RegionRouter(; inhibition_matrix=...)` (see
+`RegionRouter` fields above). Default still seeds from the historical 4×4
+`INHIBIT` table when `n_regions ≤ 4`.
+
+If a workflow needs spike trains or scoring-config objects, they belong in the
+surrounding SNN/runtime package; only the compact summaries cross into TemporalFocus.
 
 ---
 

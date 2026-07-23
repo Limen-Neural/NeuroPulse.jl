@@ -48,7 +48,8 @@ Notes:
 ## `RegionRouter` / `NeroOrchestrator`
 
 ```julia
-RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES)
+RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES,
+               inhibition_matrix=nothing)
 ```
 
 Mutable routing state. `NeroOrchestrator` is a constant alias of `RegionRouter`
@@ -56,6 +57,7 @@ Mutable routing state. `NeroOrchestrator` is a constant alias of `RegionRouter`
 
 Important fields:
 - `n_regions`, `n_out`
+- `inhibition_matrix` — `n_regions × n_regions` lateral inhibition weights
 - `routing_weights`
 - `readout_ema`
 - `spike_density`
@@ -68,6 +70,9 @@ Notes:
 - the hot path is preallocated and in-place
 - default names are historical/example defaults, not required semantics
 - callers can provide custom `region_names`
+- if `inhibition_matrix` is `nothing`, a default matrix is built for `n_regions`
+  (`INHIBIT[1:n,1:n]` when `n ≤ 4`; scaled lateral matrix when `n > 4`); a custom
+  matrix must be `n_regions × n_regions`
 
 ## `update_routing!` / `update_relevance!`
 
@@ -106,10 +111,11 @@ Useful for logs, debugging, and lightweight monitoring.
 ## `adapt_leak!`
 
 ```julia
-adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Float32)
+adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Real)
 ```
 
 Small helper that maps a fan-speed-like stress signal in `[0, 100]` to a leak-rate range.
+The second argument is `Real` (not only `Float32`) so ordinary numeric literals work.
 
 Notes:
 - this function is optional convenience logic
@@ -120,9 +126,10 @@ Notes:
 
 These are current limitations, not hidden behavior:
 
-- the package name is generalized, but some exported symbols still carry NERO naming
-- no higher-level config object exists for the inhibition matrix or scoring constants on current `main` (fixed 4×4 `INHIBIT`; configurable `n×n` `inhibition_matrix` is LIM-229 / GH#23 / PR #34)
-- defaults still imply a four-component layout; adjacency `> 0` alone does not enable inhibition for region indices outside that 4×4 table
+- the package name is generalized (`TemporalFocus`); some exported symbols still carry NERO naming
+- scoring constants (α/β/γ, EMA decay, floors) remain module-level globals (no `RoutingConfig` on this branch)
+- defaults still imply a four-component example layout for names / historical `INHIBIT`
+- inhibition is configurable via `RegionRouter(; inhibition_matrix=...)` (see field notes above)
 - there is not yet a first-class generic `ComponentState` / `RouterState` naming pass
 
 That is part of the package's current stage: usable now, but not yet the final API shape.

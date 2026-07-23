@@ -24,8 +24,12 @@ makedocs(;
     warnonly = [:missing_docs],
 )
 
-deploydocs(;
-    repo = "github.com/Limen-Neural/NeuroPulse.jl.git",
-    devbranch = "main",
-    push_preview = true,
-)
+# Deploy only when a deploy key is available (push to main/tags). PR builds set
+# DOCUMENTER_KEY empty and only run makedocs above.
+if !isempty(get(ENV, "DOCUMENTER_KEY", ""))
+    deploydocs(;
+        repo = "github.com/Limen-Neural/NeuroPulse.jl.git",
+        devbranch = "main",
+        push_preview = true,
+    )
+end

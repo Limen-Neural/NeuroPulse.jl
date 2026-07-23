@@ -47,11 +47,12 @@ but the long-term package boundary may want either:
 
 ### 4. Configuration surface is still minimal
 
-Current tuning constants are hardcoded in source. That keeps the library simple, but it
-limits experimentation with:
-- alternate scoring weights
-- alternate inhibition matrices
-- different floor/normalization policies
+Scoring weights (α/β/γ, EMA decay, floors) remain module-level constants. That keeps the
+library simple, but it limits experimentation with alternate scoring weights and
+floor/normalization policies.
+
+Inhibition matrices are already configurable: pass `inhibition_matrix=` to
+`RegionRouter` (or accept the default generator for any `n_regions`).
 
 ### 5. Documentation still needs to grow with the API
 
