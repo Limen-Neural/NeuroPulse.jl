@@ -10,7 +10,6 @@
   <img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="MIT OR Apache-2.0">
 </p>
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://limen-neural.github.io/NeuroPulse.jl/stable)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://limen-neural.github.io/NeuroPulse.jl/dev)
 
 ---
@@ -174,8 +173,8 @@ Those defaults are serviceable, but they are not the final abstraction boundary.
 
 ## Documentation
 
-- [Stable docs](https://limen-neural.github.io/NeuroPulse.jl/stable) (created on first version tag)
-- [Dev docs](https://limen-neural.github.io/NeuroPulse.jl/dev) (updates from `main`)
+- [Dev docs](https://limen-neural.github.io/NeuroPulse.jl/dev) — updates from `main` (Documenter `deploydocs`)
+- Stable docs (`/stable`) appear only after the first version tag is pushed; until then use **dev**
 
 Source markdown lives in `docs/` (Documenter pages under `docs/src/`):
 
