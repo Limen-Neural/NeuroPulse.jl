@@ -17,6 +17,7 @@ makedocs(;
         "Home" => "index.md",
         "Overview" => "overview.md",
         "API" => "api.md",
+        "Interop" => "interop.md",
         "Roadmap" => "roadmap.md",
     ],
     # Early-stage package: allow missing docstrings without failing the build.

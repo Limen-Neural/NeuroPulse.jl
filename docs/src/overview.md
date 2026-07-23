@@ -18,12 +18,14 @@ new routing distribution.
 
 ## Data flow
 
-1. The caller constructs one `LobeState` per component.
-2. Each `LobeState` provides:
-   - `last_spike_rate`
-   - `output`
-3. `update_relevance!` updates the orchestrator's EMA, surprise scores, and routing weights.
-4. The caller consumes `routing_weights`.
+1. The caller constructs one `ActivityRegion` per region/component.
+2. Each `ActivityRegion` provides:
+   - `last_spike_rate` (`Float32` in `[0, 1]`)
+   - `output` (`Vector{Float32}` of length `n_out`)
+3. `update_routing!` updates the router's EMA, surprise scores, and routing weights.
+4. The caller consumes `router.routing_weights` (length `n_regions`, sum ~1).
+
+Frozen shape details: [`interop.md`](interop.md).
 
 ## Why the API is so small
 

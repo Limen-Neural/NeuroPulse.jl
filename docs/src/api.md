@@ -1,5 +1,9 @@
 # TemporalFocus API notes
 
+For the frozen interop data-shape contract (Float32 rates in `[0,1]`, readout length
+`n_out`, `routing_weights` length `n_regions` summing ~1, no owned spike trains), see
+[`interop.md`](interop.md).
+
 This document summarizes the exported API as it exists today.
 
 ## Exported types and functions
@@ -39,7 +43,6 @@ Fields:
 Notes:
 - `output` width should match the router's `n_out`
 - `ActivityRegion(n_out)` creates a zeroed placeholder
-- the type is immutable; rebuild or replace vector entries when rates/readouts change
 - `LobeState` is a constant alias of `ActivityRegion`
 
 ## `RegionRouter` / `NeroOrchestrator`
@@ -117,9 +120,9 @@ Notes:
 
 These are current limitations, not hidden behavior:
 
-- the package name is generalized (`TemporalFocus`); the GitHub repo is still `NeuroPulse.jl`
-- legacy NERO aliases remain exported for compatibility
-- no higher-level config object exists for the inhibition matrix or scoring constants
-- defaults still imply a four-component layout
+- the package name is generalized, but some exported symbols still carry NERO naming
+- no higher-level config object exists for the inhibition matrix or scoring constants on current `main` (fixed 4×4 `INHIBIT`; configurable `n×n` `inhibition_matrix` is LIM-229 / GH#23 / PR #34)
+- defaults still imply a four-component layout; adjacency `> 0` alone does not enable inhibition for region indices outside that 4×4 table
+- there is not yet a first-class generic `ComponentState` / `RouterState` naming pass
 
 That is part of the package's current stage: usable now, but not yet the final API shape.
