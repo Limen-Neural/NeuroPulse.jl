@@ -48,6 +48,30 @@ const INHIBIT = Float32[
 ]
 const NERO_INHIBIT = INHIBIT
 
+"""
+    default_inhibition_matrix(n_regions) -> Matrix{Float32}
+
+Build the default cross-region inhibition matrix.
+
+- For `n_regions <= 4`: top-left `n_regions × n_regions` slice of the historical
+  asymmetric `INHIBIT` layout (copy). Preserves pre-LIM-229 behavior for smaller
+  routers that previously applied `INHIBIT[1:n, 1:n]` via bounds checks.
+- For `n_regions > 4`: zero diagonal; off-diagonal lateral inhibition that decays
+  with index distance, `0.08f0 / abs(i - j)` (symmetric under `i ↔ j`).
+"""
+function default_inhibition_matrix(n_regions::Int)::Matrix{Float32}
+    if n_regions <= 4
+        return copy(INHIBIT[1:n_regions, 1:n_regions])
+    end
+    M = zeros(Float32, n_regions, n_regions)
+    for i = 1:n_regions, j = 1:n_regions
+        if i != j
+            M[i, j] = 0.08f0 / Float32(abs(i - j))
+        end
+    end
+    return M
+end
+
 # ── Router State ──────────────────────────────────────────────────────────────
 
 """
@@ -58,24 +82,26 @@ Pre-allocated at startup; the hot-path `update_routing!` does NO heap
 allocation — all work is in-place on these fields.
 
 Fields:
-  n_regions        — number of regions (default 4)
-  n_out            — readout width per region (default 16)
-  region_names     — human-readable region labels
-  adjacency_matrix — n_regions × n_regions directed adjacency weights
-  routing_weights  — current routing weights vector (sums to 1.0)
-  readout_ema      — per-region EMA of the readout (n_regions × n_out)
-  spike_density    — current spike density per region
+  n_regions          — number of regions (default 4)
+  n_out              — readout width per region (default 16)
+  region_names       — human-readable region labels
+  adjacency_matrix   — n_regions × n_regions directed adjacency weights
+  inhibition_matrix  — n_regions × n_regions cross-region inhibition weights
+  routing_weights    — current routing weights vector (sums to 1.0)
+  readout_ema        — per-region EMA of the readout (n_regions × n_out)
+  spike_density      — current spike density per region
   prev_routing_weights — previous tick routing weights (for momentum)
-  prev_relevance   — scratch buffer for raw relevance scores during computation (readable after tick)
-  surprise         — manifold surprise score per region
-  scratch          — reusable scratch buffer (n_out elements)
-  tick_count       — global tick counter
+  prev_relevance     — scratch buffer for raw relevance scores during computation (readable after tick)
+  surprise           — manifold surprise score per region
+  scratch            — reusable scratch buffer (n_out elements)
+  tick_count         — global tick counter
 """
 mutable struct RegionRouter
     n_regions::Int
     n_out::Int
     region_names::Vector{String}
     adjacency_matrix::Matrix{Float32}
+    inhibition_matrix::Matrix{Float32}
     routing_weights::Vector{Float32}
     readout_ema::Matrix{Float32}
     spike_density::Vector{Float32}
@@ -87,14 +113,20 @@ mutable struct RegionRouter
 end
 
 """
-    RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES) -> RegionRouter
+    RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES,
+                   inhibition_matrix=nothing) -> RegionRouter
 
 Build the static region graph and pre-allocate all working buffers.
+
+If `inhibition_matrix` is `nothing`, a default matrix is built via
+`default_inhibition_matrix(n_regions)`. Otherwise the provided matrix is
+converted to `Matrix{Float32}` and must be `n_regions × n_regions`.
 """
 function RegionRouter(;
     n_regions::Int = 4,
     n_out::Int = 16,
     region_names::Vector{String} = DEFAULT_REGION_NAMES,
+    inhibition_matrix::Union{Nothing,AbstractMatrix} = nothing,
 )
 
     # Auto-generate region names if not enough provided
@@ -109,11 +141,25 @@ function RegionRouter(;
         i != j && (adjacency_matrix[i, j] = 1.0f0)
     end
 
+    if inhibition_matrix === nothing
+        inh = default_inhibition_matrix(n_regions)
+    else
+        inh = Matrix{Float32}(inhibition_matrix)
+        if size(inh) != (n_regions, n_regions)
+            throw(
+                ArgumentError(
+                    "inhibition_matrix must be n_regions × n_regions, got $(size(inh)) for n_regions=$n_regions",
+                ),
+            )
+        end
+    end
+
     RegionRouter(
         n_regions,
         n_out,
         region_names,
         adjacency_matrix,
+        inh,
         fill(1.0f0 / n_regions, n_regions),
         zeros(Float32, n_regions, n_out),
         zeros(Float32, n_regions),
@@ -143,7 +189,8 @@ Algorithm per region i:
   5. raw[i]            = α×density + β×surprise + γ×momentum
 
 Cross-region inhibition:
-  6. inhibited[i] = raw[i] - Σⱼ INHIBIT[j,i] × raw[j]
+  6. inhibited[i] = raw[i] - Σⱼ inhibition_matrix[j,i] × raw[j]
+     (only over adjacent edges where adjacency_matrix[j,i] > 0)
 
 Softmax normalisation → sum(relevance) = 1.0, each ≥ MIN_SCORE.
 """
@@ -183,10 +230,8 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     for dst = 1:n
         inh_sum = 0.0f0
         for src = 1:n
-            if router.adjacency_matrix[src, dst] > 0.0f0 &&
-               src <= size(INHIBIT, 1) &&
-               dst <= size(INHIBIT, 2)
-                inh_sum += INHIBIT[src, dst] * raw[src]
+            if router.adjacency_matrix[src, dst] > 0.0f0
+                inh_sum += router.inhibition_matrix[src, dst] * raw[src]
             end
         end
         inhibited[dst] = max(raw[dst] - inh_sum, MIN_SCORE)
