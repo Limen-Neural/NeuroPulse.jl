@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
+@inline _temporal_weight_unchecked(dt::Float32, τ::Float32) = exp(-abs(dt) / τ)
+
 """
     temporal_weight(dt, τ) -> Float32
 
@@ -20,7 +22,7 @@ Computes `exp(-abs(dt) / τ)`. Closer-in-time spikes receive higher weight.
 @inline function temporal_weight(dt::Real, τ::Real)
     τ_f32 = Float32(τ)
     τ_f32 > 0f0 || throw(ArgumentError("τ must be positive"))
-    return exp(-abs(Float32(dt)) / τ_f32)
+    return _temporal_weight_unchecked(Float32(dt), τ_f32)
 end
 
 """
@@ -62,7 +64,7 @@ function spike_attention_temporal(
         for context_event in context_spikes.events
             if source_id == context_event.neuron_id
                 attention[source_id] += source_event.value * context_event.value *
-                                        temporal_weight(source_event.t - context_event.t, τ_f32)
+                                        _temporal_weight_unchecked(source_event.t - context_event.t, τ_f32)
             end
         end
     end

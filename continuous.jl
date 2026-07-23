@@ -43,7 +43,7 @@ function spike_attention_continuous(
                 dt = source_event.t - context_event.t
                 if abs(dt) <= window
                     attention[source_id] += source_event.value * context_event.value *
-                                            temporal_weight(dt, τ_f32)
+                                            _temporal_weight_unchecked(dt, τ_f32)
                 end
             end
         end
