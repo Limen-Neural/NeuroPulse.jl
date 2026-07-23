@@ -111,16 +111,23 @@ Useful for logs, debugging, and lightweight monitoring.
 ## `adapt_leak!`
 
 ```julia
-adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Real)
+adapt_leak!(leak_rate::Ref{Float32}, stress::Real;
+            min_leak::Real=0.01f0,
+            max_leak::Real=0.25f0,
+            stress_adapter=nothing)
 ```
 
-Small helper that maps a fan-speed-like stress signal in `[0, 100]` to a leak-rate range.
+Optional helper that maps a generic stress signal to a leak-rate range.
 The second argument is `Real` (not only `Float32`) so ordinary numeric literals work.
+
+Default adapter: `stress` is percent-scale in `[0, 100]` → unit interval, then
+lerped between `min_leak` and `max_leak`. Pass `stress_adapter` to map any other
+stress domain into `[0, 1]` first.
 
 Notes:
 - this function is optional convenience logic
 - it is not required for the core routing algorithm
-- callers that use different stress semantics may want a different adapter layer
+- custom `stress_adapter` is preferred when stress is not percent-scale
 
 ## Known API design limitations
 

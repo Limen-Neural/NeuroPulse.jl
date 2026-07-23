@@ -535,25 +535,27 @@ using TemporalFocus
 
 # ── adapt_leak! (LIM-233 / GH#27) ──────────────────────────────────────────
 
-    @testset "adapt_leak! default fan-speed adapter" begin
+    @testset "adapt_leak! default stress percent scale [0, 100]" begin
+        # Default adapter: stress is a percent-like signal in [0, 100] → unit interval,
+        # then lerped to leak bounds. (Back-compat with old fan-speed call sites.)
         leak = Ref(0.0f0)
-        adapt_leak!(leak, 0)
+        adapt_leak!(leak, 0)   # zero stress → min_leak
         @test leak[] == 0.01f0
 
-        adapt_leak!(leak, 100)
+        adapt_leak!(leak, 100) # full stress → max_leak
         @test leak[] == 0.25f0
 
-        adapt_leak!(leak, 50)
+        adapt_leak!(leak, 50)  # mid stress
         @test isapprox(leak[], 0.13f0, atol = 1e-5)
 
-        # values outside [0, 100] clamp to endpoints
+        # stress outside [0, 100] clamps to endpoints
         adapt_leak!(leak, -10)
         @test leak[] == 0.01f0
         adapt_leak!(leak, 200)
         @test leak[] == 0.25f0
     end
 
-    @testset "adapt_leak! custom min/max" begin
+    @testset "adapt_leak! custom min/max with stress" begin
         leak = Ref(0.0f0)
         adapt_leak!(leak, 0; min_leak = 0.05f0, max_leak = 0.50f0)
         @test leak[] == 0.05f0
@@ -565,7 +567,7 @@ using TemporalFocus
         @test isapprox(leak[], 0.275f0, atol = 1e-5)
     end
 
-    @testset "adapt_leak! Real kwargs" begin
+    @testset "adapt_leak! Real stress bounds kwargs" begin
         leak = Ref(0.0f0)
         # Float64 kwargs accepted and converted to Float32 internally
         adapt_leak!(leak, 0; min_leak = 0.05, max_leak = 0.50)
@@ -578,7 +580,7 @@ using TemporalFocus
         @test isapprox(leak[], 0.275f0, atol = 1e-5)
     end
 
-    @testset "adapt_leak! inverted bounds" begin
+    @testset "adapt_leak! inverted stress bounds" begin
         leak = Ref(0.0f0)
         @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = 0.5f0, max_leak = 0.1f0)
         @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = 0.5, max_leak = 0.1)
@@ -586,7 +588,7 @@ using TemporalFocus
 
     @testset "adapt_leak! custom stress_adapter" begin
         leak = Ref(0.0f0)
-        # identity adapter: stress already in [0, 1]
+        # identity adapter: stress already in unit interval [0, 1]
         unit_adapter = s -> Float32(s)
         adapt_leak!(leak, 0.0; stress_adapter = unit_adapter)
         @test leak[] == 0.01f0
@@ -597,7 +599,7 @@ using TemporalFocus
         adapt_leak!(leak, 0.5; stress_adapter = unit_adapter)
         @test isapprox(leak[], 0.13f0, atol = 1e-5)
 
-        # custom adapter + custom min/max
+        # custom stress adapter + custom min/max
         adapt_leak!(
             leak,
             0.25;

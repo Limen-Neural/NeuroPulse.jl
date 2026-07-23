@@ -39,8 +39,9 @@ other stress conditions.
 
 - `stress` is any real-valued stress signal.
 - When `stress_adapter` is `nothing` (default), `stress` is treated as a
-  fan-speed-like percentage in `[0, 100]` and mapped to the unit interval via
-  `clamp(Float32(stress / 100), 0, 1)` (preserves previous behavior).
+  percent-scale signal in `[0, 100]` and mapped to the unit interval via
+  `clamp(Float32(stress / 100), 0, 1)`. This preserves the previous default
+  call shape (values that used to be fan-speed percents still work).
 - When `stress_adapter` is provided, it is called as `stress_adapter(stress)`
   and must return a value in `[0, 1]` (callers are responsible for clamping if
   needed). That unit value is then linearly interpolated between `min_leak` and
@@ -49,11 +50,11 @@ other stress conditions.
 # Arguments
 
   - `leak_rate` — reference to the current leak rate (modified in-place)
-  - `stress` — stress signal (default interpretation: fan speed percentage)
+  - `stress` — stress signal (default interpretation: percent-scale in `[0, 100]`)
   - `min_leak` — leak at zero stress (default `0.01f0`); any `Real`, converted to `Float32`
   - `max_leak` — leak at full stress (default `0.25f0`); any `Real`, converted to `Float32`
   - `stress_adapter` — optional callable `stress -> [0,1]`; `nothing` uses the
-    default fan-speed adapter
+    default percent-scale `[0, 100]` → unit adapter
 
 # Errors
 
