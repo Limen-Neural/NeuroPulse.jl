@@ -51,13 +51,12 @@ jobs:
     # Permissions needed to:
     # - Deploy docs: https://documenter.juliadocs.org/stable/man/hosting/#Permissions
     # - Delete old caches: https://github.com/julia-actions/cache#usage
+    # Documenter pushes gh-pages via GITHUB_TOKEN; no actions/deploy-pages.
     permissions:
       actions: write
       contents: write
       pull-requests: read
       statuses: write
-      pages: write
-      id-token: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

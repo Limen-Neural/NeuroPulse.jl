@@ -362,6 +362,8 @@ using TemporalFocus
         bad = (
             n_regions = 4,
             n_out = 16,
+            adjacency_matrix = copy(router.adjacency_matrix),
+            inhibition_matrix = copy(router.inhibition_matrix),
             routing_weights = zeros(Float32, 2),
             readout_ema = zeros(Float32, 4, 16),
             spike_density = zeros(Float32, 4),
@@ -372,6 +374,46 @@ using TemporalFocus
             tick_count = Int64(0),
         )
         @test_throws ArgumentError load_state!(router, bad)
+    end
+
+    @testset "load_state! rejects inhibition_matrix mismatch" begin
+        n = 3
+        n_out = 4
+        names = ["A", "B", "C"]
+        custom = Float32[
+            0.0 0.1 0.0
+            0.05 0.0 0.1
+            0.0 0.05 0.0
+        ]
+        source = RegionRouter(
+            n_regions = n,
+            n_out = n_out,
+            region_names = names,
+            inhibition_matrix = custom,
+        )
+        update_routing!(
+            source,
+            [ActivityRegion(rand(Float32), rand(Float32, n_out)) for _ = 1:n],
+        )
+        snap = save_state(source)
+        @test snap.inhibition_matrix == custom
+        @test snap.inhibition_matrix !== source.inhibition_matrix
+
+        # Same size, default inhibition — must not silently load
+        target = RegionRouter(n_regions = n, n_out = n_out, region_names = names)
+        @test target.inhibition_matrix != custom
+        @test_throws ArgumentError load_state!(target, snap)
+
+        # Matching custom matrix still loads
+        twin = RegionRouter(
+            n_regions = n,
+            n_out = n_out,
+            region_names = names,
+            inhibition_matrix = custom,
+        )
+        load_state!(twin, snap)
+        @test twin.routing_weights == source.routing_weights
+        @test twin.tick_count == source.tick_count
     end
 
 

@@ -266,14 +266,19 @@ end
 
 Copy mutable routing state into a serializable `NamedTuple` for checkpointing.
 
-Includes `n_regions` and `n_out` for load-time validation. Array fields are
-independent copies (`copy`) so later `update_routing!` calls do not mutate the
-snapshot. Element types are immutable (`Float32`), so `copy` is sufficient.
+Includes `n_regions` and `n_out` for load-time validation, plus copies of
+`adjacency_matrix` and `inhibition_matrix` so loads can reject routers whose
+routing graph/inhibition config does not match the experiment that produced the
+snapshot. Mutable array fields are independent copies (`copy`) so later
+`update_routing!` calls do not mutate the snapshot. Element types are immutable
+(`Float32`), so `copy` is sufficient.
 """
 function save_state(router::RegionRouter)
     return (
         n_regions = router.n_regions,
         n_out = router.n_out,
+        adjacency_matrix = copy(router.adjacency_matrix),
+        inhibition_matrix = copy(router.inhibition_matrix),
         routing_weights = copy(router.routing_weights),
         readout_ema = copy(router.readout_ema),
         spike_density = copy(router.spike_density),
@@ -290,9 +295,10 @@ end
 
 Restore mutable routing state in-place from a snapshot produced by `save_state`.
 
-Throws `ArgumentError` if `n_regions`, `n_out`, or any array size does not match
-the target router. Structural fields (`region_names`, `adjacency_matrix`) are
-not restored — they must already match the experiment configuration.
+Throws `ArgumentError` if `n_regions`, `n_out`, any array size, or the structural
+routing matrices (`adjacency_matrix`, `inhibition_matrix`) do not match the target
+router. Structural matrices are validated but not restored — the target router
+must already be configured for the same experiment graph/inhibition.
 """
 function load_state!(router::RegionRouter, snap)
     n = router.n_regions
@@ -306,6 +312,28 @@ function load_state!(router::RegionRouter, snap)
                 "snapshot dimensions (n_regions=$(snap_n), n_out=$(snap_n_out)) do not match router (n_regions=$n, n_out=$n_out)",
             ),
         )
+    end
+
+    # Structural routing config: reject silent resume with different inhibition/graph.
+    if hasproperty(snap, :adjacency_matrix)
+        _check_mat_size(snap.adjacency_matrix, (n, n), :adjacency_matrix)
+        if snap.adjacency_matrix != router.adjacency_matrix
+            throw(
+                ArgumentError(
+                    "snapshot adjacency_matrix does not match router adjacency_matrix",
+                ),
+            )
+        end
+    end
+    if hasproperty(snap, :inhibition_matrix)
+        _check_mat_size(snap.inhibition_matrix, (n, n), :inhibition_matrix)
+        if snap.inhibition_matrix != router.inhibition_matrix
+            throw(
+                ArgumentError(
+                    "snapshot inhibition_matrix does not match router inhibition_matrix",
+                ),
+            )
+        end
     end
 
     _check_vec_len(snap.routing_weights, n, :routing_weights)
