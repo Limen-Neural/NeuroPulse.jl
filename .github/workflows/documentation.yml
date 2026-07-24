@@ -39,11 +39,13 @@ jobs:
       - name: Build documentation
         run: julia --color=yes --project=docs docs/make.jl
         env:
-          # Documenter may read these; empty on PRs so deploy is a no-op / skipped.
+          # No deploy auth on PRs — make.jl only runs makedocs.
           GITHUB_TOKEN: ""
           DOCUMENTER_KEY: ""
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
 
-  # Push to main/tags: full deploy with write permissions and secrets.
+  # Push to main/tags: full deploy with write permissions.
+  # Documenter uses GITHUB_TOKEN by default (same-repo Pages); DOCUMENTER_KEY is optional SSH key.
   deploy:
     if: github.event_name == 'push'
     # Permissions needed to:
@@ -54,6 +56,8 @@ jobs:
       contents: write
       pull-requests: read
       statuses: write
+      pages: write
+      id-token: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -71,4 +75,6 @@ jobs:
         run: julia --color=yes --project=docs docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional; leave unset for GITHUB_TOKEN-only deploy (Documenter supports either).
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}

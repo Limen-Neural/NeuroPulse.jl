@@ -24,9 +24,14 @@ makedocs(;
     warnonly = [:missing_docs],
 )
 
-# Deploy only when a deploy key is available (push to main/tags). PR builds set
-# DOCUMENTER_KEY empty and only run makedocs above.
-if !isempty(get(ENV, "DOCUMENTER_KEY", ""))
+# Deploy from CI push (main/tags). Documenter accepts either:
+# - GITHUB_TOKEN (same-repo Pages; workflow already has contents: write), or
+# - DOCUMENTER_KEY (optional SSH deploy key for fork/private setups).
+# PR job clears both tokens so only makedocs runs.
+const _has_github_token = !isempty(get(ENV, "GITHUB_TOKEN", ""))
+const _has_documenter_key = !isempty(get(ENV, "DOCUMENTER_KEY", ""))
+const _is_pr = get(ENV, "GITHUB_EVENT_NAME", "") == "pull_request"
+if get(ENV, "CI", "false") == "true" && !_is_pr && (_has_github_token || _has_documenter_key)
     deploydocs(;
         repo = "github.com/Limen-Neural/NeuroPulse.jl.git",
         devbranch = "main",
