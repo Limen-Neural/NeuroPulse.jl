@@ -10,6 +10,8 @@
   <img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="MIT OR Apache-2.0">
 </p>
 
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://limen-neural.github.io/NeuroPulse.jl/dev)
+
 ---
 
 TemporalFocus.jl is a small Julia library for computing per-component relevance scores from
@@ -171,21 +173,37 @@ Those defaults are serviceable, but they are not the final abstraction boundary.
 
 ## Documentation
 
-Additional docs live in `docs/`:
+- [Dev docs](https://limen-neural.github.io/NeuroPulse.jl/dev) — updates from `main` (Documenter `deploydocs`)
+- Stable docs (`/stable`) appear only after the first version tag is pushed; until then use **dev**
 
-- `docs/overview.md` — architecture, scope, and intended usage
-- `docs/api.md` — exported types/functions and behavior notes
-- `docs/interop.md` — frozen data-shape / interop contract (rates, readouts, routing weights)
-- `docs/roadmap.md` — gaps, next cleanup targets, and candid project status
+Source markdown lives in `docs/` (Documenter pages under `docs/src/`):
+
+- `docs/src/overview.md` — architecture, scope, and intended usage
+- `docs/src/api.md` — exported types/functions and behavior notes
+- `docs/src/interop.md` — frozen data-shape / interop contract (rates, readouts, routing weights)
+- `docs/src/roadmap.md` — gaps, next cleanup targets, and candid project status
+
+(Root copies under `docs/*.md` may exist for GitHub browsing; Documenter builds from `docs/src/`.)
+
+Build locally with:
+
+```bash
+julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
+julia --project=docs docs/make.jl
+```
 
 ## Migration note
 
-This repository was renamed from `NeuroPulse.jl` (and earlier `SpikenautAttention.jl` or `SpikenautNero.jl`) to `TemporalFocus.jl`.
+The **Julia package / project identity** changed from `NeuroPulse` (and earlier
+`SpikenautAttention` / `SpikenautNero`) to **`TemporalFocus`**. The **GitHub
+repository** and **GitHub Pages path** remain `Limen-Neural/NeuroPulse.jl`
+(`https://limen-neural.github.io/NeuroPulse.jl/...`).
 
 Migration steps for downstream users:
 
-- replace `Pkg.add("NeuroPulse")` (or `SpikenautAttention`) with `Pkg.add("TemporalFocus")`\n- replace `using NeuroPulse` (or `using SpikenautAttention`) with `using TemporalFocus`
-- update any package metadata or examples that still reference the old name
+- replace `Pkg.add("NeuroPulse")` (or `SpikenautAttention`) with `Pkg.add("TemporalFocus")`
+- replace `using NeuroPulse` (or `using SpikenautAttention`) with `using TemporalFocus`
+- update any package metadata or examples that still reference the old package name
 
 The NERO algorithm name remains in the current public API via `NeroOrchestrator` and
 `nero_diagnostics`, but the package identity is now `TemporalFocus`.
