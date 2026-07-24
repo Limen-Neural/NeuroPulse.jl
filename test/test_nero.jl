@@ -284,6 +284,8 @@ using TemporalFocus
         @test snap.n_regions == 3
         @test snap.n_out == 8
         @test snap.tick_count == 5
+        @test snap.region_names == ["A", "B", "C"]
+        @test snap.region_names !== router.region_names
         @test snap.routing_weights == router.routing_weights
         @test snap.readout_ema == router.readout_ema
         # Snapshot must own independent buffers (not views into the router)
@@ -362,6 +364,7 @@ using TemporalFocus
         bad = (
             n_regions = 4,
             n_out = 16,
+            region_names = copy(router.region_names),
             adjacency_matrix = copy(router.adjacency_matrix),
             inhibition_matrix = copy(router.inhibition_matrix),
             routing_weights = zeros(Float32, 2),
@@ -374,6 +377,25 @@ using TemporalFocus
             tick_count = Int64(0),
         )
         @test_throws ArgumentError load_state!(router, bad)
+    end
+
+    @testset "load_state! rejects region_names mismatch" begin
+        source = RegionRouter(n_regions = 3, n_out = 4, region_names = ["A", "B", "C"])
+        update_routing!(
+            source,
+            [ActivityRegion(rand(Float32), rand(Float32, 4)) for _ = 1:3],
+        )
+        snap = save_state(source)
+        target = RegionRouter(n_regions = 3, n_out = 4, region_names = ["X", "Y", "Z"])
+        @test_throws ArgumentError load_state!(target, snap)
+        err = try
+            load_state!(target, snap)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("region_names", sprint(showerror, err))
     end
 
     @testset "load_state! rejects inhibition_matrix mismatch" begin
@@ -416,14 +438,14 @@ using TemporalFocus
         @test twin.tick_count == source.tick_count
     end
 
-    @testset "load_state! rejects snapshot missing structural matrices" begin
+    @testset "load_state! rejects snapshot missing structural fields" begin
         router = RegionRouter(n_regions = 3, n_out = 4, region_names = ["A", "B", "C"])
         update_routing!(
             router,
             [ActivityRegion(rand(Float32), rand(Float32, 4)) for _ = 1:3],
         )
         snap = save_state(router)
-        # Older/hand-built snapshot without structural matrices
+        # Older/hand-built snapshot without structural fields
         incomplete = (
             n_regions = snap.n_regions,
             n_out = snap.n_out,
@@ -437,6 +459,78 @@ using TemporalFocus
             tick_count = snap.tick_count,
         )
         @test_throws ArgumentError load_state!(router, incomplete)
+
+        # Missing only adjacency_matrix
+        no_adj = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            region_names = snap.region_names,
+            inhibition_matrix = snap.inhibition_matrix,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            scratch = snap.scratch,
+            tick_count = snap.tick_count,
+        )
+        err_adj = try
+            load_state!(router, no_adj)
+            nothing
+        catch e
+            e
+        end
+        @test err_adj isa ArgumentError
+        @test occursin("adjacency_matrix", sprint(showerror, err_adj))
+
+        # Missing only inhibition_matrix
+        no_inh = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            region_names = snap.region_names,
+            adjacency_matrix = snap.adjacency_matrix,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            scratch = snap.scratch,
+            tick_count = snap.tick_count,
+        )
+        err_inh = try
+            load_state!(router, no_inh)
+            nothing
+        catch e
+            e
+        end
+        @test err_inh isa ArgumentError
+        @test occursin("inhibition_matrix", sprint(showerror, err_inh))
+
+        # Missing only region_names
+        no_names = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            adjacency_matrix = snap.adjacency_matrix,
+            inhibition_matrix = snap.inhibition_matrix,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            scratch = snap.scratch,
+            tick_count = snap.tick_count,
+        )
+        err_names = try
+            load_state!(router, no_names)
+            nothing
+        catch e
+            e
+        end
+        @test err_names isa ArgumentError
+        @test occursin("region_names", sprint(showerror, err_names))
     end
 
 

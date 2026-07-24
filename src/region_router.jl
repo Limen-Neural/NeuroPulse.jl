@@ -267,16 +267,17 @@ end
 Copy mutable routing state into a serializable `NamedTuple` for checkpointing.
 
 Includes `n_regions` and `n_out` for load-time validation, plus copies of
-`adjacency_matrix` and `inhibition_matrix` so loads can reject routers whose
-routing graph/inhibition config does not match the experiment that produced the
-snapshot. Mutable array fields are independent copies (`copy`) so later
-`update_routing!` calls do not mutate the snapshot. Element types are immutable
-(`Float32`), so `copy` is sufficient.
+`region_names`, `adjacency_matrix`, and `inhibition_matrix` so loads can reject
+routers whose labels/graph/inhibition config does not match the experiment that
+produced the snapshot. Mutable array fields are independent copies (`copy`) so
+later `update_routing!` calls do not mutate the snapshot. Element types are
+immutable (`Float32` / `String`), so `copy` is sufficient.
 """
 function save_state(router::RegionRouter)
     return (
         n_regions = router.n_regions,
         n_out = router.n_out,
+        region_names = copy(router.region_names),
         adjacency_matrix = copy(router.adjacency_matrix),
         inhibition_matrix = copy(router.inhibition_matrix),
         routing_weights = copy(router.routing_weights),
@@ -297,12 +298,12 @@ Restore mutable routing state in-place from a snapshot produced by `save_state`.
 
 Throws `ArgumentError` if:
 - `n_regions` / `n_out` or any array size does not match the target router
-- snapshot is missing required structural fields `adjacency_matrix` or
-  `inhibition_matrix` (always written by `save_state`)
-- those matrices do not equal the target router's matrices
+- snapshot is missing required structural fields `region_names`,
+  `adjacency_matrix`, or `inhibition_matrix` (always written by `save_state`)
+- those structural fields do not equal the target router's configuration
 
-Structural matrices are validated but not restored — the target router must
-already be configured for the same experiment graph/inhibition.
+Structural fields are validated but not restored — the target router must
+already be configured for the same experiment labels/graph/inhibition.
 """
 function load_state!(router::RegionRouter, snap)
     n = router.n_regions
@@ -319,14 +320,18 @@ function load_state!(router::RegionRouter, snap)
     end
 
     # Required structural routing config (always present in save_state output).
-    hasproperty(snap, :adjacency_matrix) || throw(
-        ArgumentError("snapshot is missing required field adjacency_matrix"),
-    )
-    hasproperty(snap, :inhibition_matrix) || throw(
-        ArgumentError("snapshot is missing required field inhibition_matrix"),
-    )
+    hasproperty(snap, :region_names) ||
+        throw(ArgumentError("snapshot is missing required field region_names"))
+    hasproperty(snap, :adjacency_matrix) ||
+        throw(ArgumentError("snapshot is missing required field adjacency_matrix"))
+    hasproperty(snap, :inhibition_matrix) ||
+        throw(ArgumentError("snapshot is missing required field inhibition_matrix"))
+    _check_vec_len(snap.region_names, n, :region_names)
     _check_mat_size(snap.adjacency_matrix, (n, n), :adjacency_matrix)
     _check_mat_size(snap.inhibition_matrix, (n, n), :inhibition_matrix)
+    if collect(String, snap.region_names) != router.region_names
+        throw(ArgumentError("snapshot region_names do not match router region_names"))
+    end
     if snap.adjacency_matrix != router.adjacency_matrix
         throw(
             ArgumentError(
