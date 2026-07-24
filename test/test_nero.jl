@@ -416,5 +416,28 @@ using TemporalFocus
         @test twin.tick_count == source.tick_count
     end
 
+    @testset "load_state! rejects snapshot missing structural matrices" begin
+        router = RegionRouter(n_regions = 3, n_out = 4, region_names = ["A", "B", "C"])
+        update_routing!(
+            router,
+            [ActivityRegion(rand(Float32), rand(Float32, 4)) for _ = 1:3],
+        )
+        snap = save_state(router)
+        # Older/hand-built snapshot without structural matrices
+        incomplete = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            scratch = snap.scratch,
+            tick_count = snap.tick_count,
+        )
+        @test_throws ArgumentError load_state!(router, incomplete)
+    end
+
 
 end

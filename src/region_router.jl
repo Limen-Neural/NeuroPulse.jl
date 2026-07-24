@@ -295,10 +295,14 @@ end
 
 Restore mutable routing state in-place from a snapshot produced by `save_state`.
 
-Throws `ArgumentError` if `n_regions`, `n_out`, any array size, or the structural
-routing matrices (`adjacency_matrix`, `inhibition_matrix`) do not match the target
-router. Structural matrices are validated but not restored — the target router
-must already be configured for the same experiment graph/inhibition.
+Throws `ArgumentError` if:
+- `n_regions` / `n_out` or any array size does not match the target router
+- snapshot is missing required structural fields `adjacency_matrix` or
+  `inhibition_matrix` (always written by `save_state`)
+- those matrices do not equal the target router's matrices
+
+Structural matrices are validated but not restored — the target router must
+already be configured for the same experiment graph/inhibition.
 """
 function load_state!(router::RegionRouter, snap)
     n = router.n_regions
@@ -314,26 +318,28 @@ function load_state!(router::RegionRouter, snap)
         )
     end
 
-    # Structural routing config: reject silent resume with different inhibition/graph.
-    if hasproperty(snap, :adjacency_matrix)
-        _check_mat_size(snap.adjacency_matrix, (n, n), :adjacency_matrix)
-        if snap.adjacency_matrix != router.adjacency_matrix
-            throw(
-                ArgumentError(
-                    "snapshot adjacency_matrix does not match router adjacency_matrix",
-                ),
-            )
-        end
+    # Required structural routing config (always present in save_state output).
+    hasproperty(snap, :adjacency_matrix) || throw(
+        ArgumentError("snapshot is missing required field adjacency_matrix"),
+    )
+    hasproperty(snap, :inhibition_matrix) || throw(
+        ArgumentError("snapshot is missing required field inhibition_matrix"),
+    )
+    _check_mat_size(snap.adjacency_matrix, (n, n), :adjacency_matrix)
+    _check_mat_size(snap.inhibition_matrix, (n, n), :inhibition_matrix)
+    if snap.adjacency_matrix != router.adjacency_matrix
+        throw(
+            ArgumentError(
+                "snapshot adjacency_matrix does not match router adjacency_matrix",
+            ),
+        )
     end
-    if hasproperty(snap, :inhibition_matrix)
-        _check_mat_size(snap.inhibition_matrix, (n, n), :inhibition_matrix)
-        if snap.inhibition_matrix != router.inhibition_matrix
-            throw(
-                ArgumentError(
-                    "snapshot inhibition_matrix does not match router inhibition_matrix",
-                ),
-            )
-        end
+    if snap.inhibition_matrix != router.inhibition_matrix
+        throw(
+            ArgumentError(
+                "snapshot inhibition_matrix does not match router inhibition_matrix",
+            ),
+        )
     end
 
     _check_vec_len(snap.routing_weights, n, :routing_weights)
