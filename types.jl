@@ -89,3 +89,17 @@ function prune!(buffer::TemporalBuffer, current_time::Real)
     filter!(event -> (current_time_f32 - event.t) <= buffer.window, buffer.events)
     return buffer
 end
+
+function Base.show(io::IO, e::SpikeEvent)
+    print(io, "SpikeEvent(neuron_id=", e.neuron_id, ", t=", e.t, ", value=", e.value, ")")
+end
+
+function Base.show(io::IO, train::SpikeTrain)
+    n = length(train.events)
+    print(io, "SpikeTrain(", n, n == 1 ? " event)" : " events)")
+end
+
+function Base.show(io::IO, buffer::TemporalBuffer)
+    n = length(buffer.events)
+    print(io, "TemporalBuffer(window=", buffer.window, ", ", n, n == 1 ? " event)" : " events)")
+end
