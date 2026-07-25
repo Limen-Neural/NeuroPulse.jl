@@ -259,6 +259,144 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     return nothing
 end
 
+# ── Checkpointing ─────────────────────────────────────────────────────────────
+
+"""
+    save_state(router::RegionRouter) -> NamedTuple
+
+Copy mutable routing state into a serializable `NamedTuple` for checkpointing.
+
+Includes `n_regions` and `n_out` for load-time validation, plus copies of
+`region_names`, `adjacency_matrix`, and `inhibition_matrix` so loads can reject
+routers whose labels/graph/inhibition config does not match the experiment that
+produced the snapshot. Mutable array fields are independent copies (`copy`) so
+later `update_routing!` calls do not mutate the snapshot. Element types are
+immutable (`Float32` / `String`), so `copy` is sufficient.
+"""
+function save_state(router::RegionRouter)
+    return (
+        n_regions = router.n_regions,
+        n_out = router.n_out,
+        region_names = copy(router.region_names),
+        adjacency_matrix = copy(router.adjacency_matrix),
+        inhibition_matrix = copy(router.inhibition_matrix),
+        routing_weights = copy(router.routing_weights),
+        readout_ema = copy(router.readout_ema),
+        spike_density = copy(router.spike_density),
+        prev_routing_weights = copy(router.prev_routing_weights),
+        prev_relevance = copy(router.prev_relevance),
+        surprise = copy(router.surprise),
+        scratch = copy(router.scratch),
+        tick_count = router.tick_count,
+    )
+end
+
+"""
+    load_state!(router::RegionRouter, snap) -> RegionRouter
+
+Restore mutable routing state in-place from a snapshot produced by `save_state`.
+
+Throws `ArgumentError` if:
+- `n_regions` / `n_out` or any array size does not match the target router
+- snapshot is missing required structural fields `region_names`,
+  `adjacency_matrix`, or `inhibition_matrix` (always written by `save_state`)
+- those structural fields do not equal the target router's configuration
+
+Structural fields are validated but not restored — the target router must
+already be configured for the same experiment labels/graph/inhibition.
+"""
+function load_state!(router::RegionRouter, snap)
+    n = router.n_regions
+    n_out = router.n_out
+
+    snap_n = Int(snap.n_regions)
+    snap_n_out = Int(snap.n_out)
+    if snap_n != n || snap_n_out != n_out
+        throw(
+            ArgumentError(
+                "snapshot dimensions (n_regions=$(snap_n), n_out=$(snap_n_out)) do not match router (n_regions=$n, n_out=$n_out)",
+            ),
+        )
+    end
+
+    # Required structural routing config (always present in save_state output).
+    hasproperty(snap, :region_names) ||
+        throw(ArgumentError("snapshot is missing required field region_names"))
+    hasproperty(snap, :adjacency_matrix) ||
+        throw(ArgumentError("snapshot is missing required field adjacency_matrix"))
+    hasproperty(snap, :inhibition_matrix) ||
+        throw(ArgumentError("snapshot is missing required field inhibition_matrix"))
+    _check_vec_len(snap.region_names, n, :region_names)
+    _check_mat_size(snap.adjacency_matrix, (n, n), :adjacency_matrix)
+    _check_mat_size(snap.inhibition_matrix, (n, n), :inhibition_matrix)
+    if collect(String, snap.region_names) != router.region_names
+        throw(ArgumentError("snapshot region_names do not match router region_names"))
+    end
+    if snap.adjacency_matrix != router.adjacency_matrix
+        throw(
+            ArgumentError(
+                "snapshot adjacency_matrix does not match router adjacency_matrix",
+            ),
+        )
+    end
+    if snap.inhibition_matrix != router.inhibition_matrix
+        throw(
+            ArgumentError(
+                "snapshot inhibition_matrix does not match router inhibition_matrix",
+            ),
+        )
+    end
+
+    _check_vec_len(snap.routing_weights, n, :routing_weights)
+    _check_mat_size(snap.readout_ema, (n, n_out), :readout_ema)
+    _check_vec_len(snap.spike_density, n, :spike_density)
+    _check_vec_len(snap.prev_routing_weights, n, :prev_routing_weights)
+    _check_vec_len(snap.prev_relevance, n, :prev_relevance)
+    _check_vec_len(snap.surprise, n, :surprise)
+    if hasproperty(snap, :scratch)
+        _check_vec_len(snap.scratch, n_out, :scratch)
+    end
+
+    copyto!(router.routing_weights, snap.routing_weights)
+    copyto!(router.readout_ema, snap.readout_ema)
+    copyto!(router.spike_density, snap.spike_density)
+    copyto!(router.prev_routing_weights, snap.prev_routing_weights)
+    copyto!(router.prev_relevance, snap.prev_relevance)
+    copyto!(router.surprise, snap.surprise)
+    if hasproperty(snap, :scratch)
+        copyto!(router.scratch, snap.scratch)
+    else
+        # Working buffer only; zero when absent so restore is deterministic.
+        fill!(router.scratch, 0.0f0)
+    end
+    router.tick_count = Int64(snap.tick_count)
+
+    return router
+end
+
+"""
+    load_state(router::RegionRouter, snap) -> RegionRouter
+
+Alias for [`load_state!`](@ref). Prefer `load_state!` for the mutating API.
+"""
+const load_state = load_state!
+
+@inline function _check_vec_len(v, expected::Int, name::Symbol)
+    length(v) == expected || throw(
+        ArgumentError(
+            "snapshot $name length $(length(v)) does not match expected $expected",
+        ),
+    )
+    return nothing
+end
+
+@inline function _check_mat_size(m, expected::Tuple{Int,Int}, name::Symbol)
+    size(m) == expected || throw(
+        ArgumentError("snapshot $name size $(size(m)) does not match expected $expected"),
+    )
+    return nothing
+end
+
 # ── Diagnostics ───────────────────────────────────────────────────────────────
 
 """

@@ -265,4 +265,273 @@ using TemporalFocus
         )
     end
 
+
+    # ── Checkpointing (LIM-234 / GH#28) ───────────────────────────────────────
+
+    @testset "save_state / load_state! round-trip" begin
+        router = RegionRouter(n_regions = 3, n_out = 8, region_names = ["A", "B", "C"])
+        for _ = 1:5
+            regions = [
+                ActivityRegion(0.9f0, ones(Float32, 8)),
+                ActivityRegion(0.1f0, 0.2f0 .* ones(Float32, 8)),
+                ActivityRegion(0.0f0, zeros(Float32, 8)),
+            ]
+            update_routing!(router, regions)
+        end
+
+        snap = save_state(router)
+        @test snap isa NamedTuple
+        @test snap.n_regions == 3
+        @test snap.n_out == 8
+        @test snap.tick_count == 5
+        @test snap.region_names == ["A", "B", "C"]
+        @test snap.region_names !== router.region_names
+        @test snap.routing_weights == router.routing_weights
+        @test snap.readout_ema == router.readout_ema
+        # Snapshot must own independent buffers (not views into the router)
+        @test snap.routing_weights !== router.routing_weights
+        @test snap.readout_ema !== router.readout_ema
+        @test snap.spike_density !== router.spike_density
+        @test snap.prev_routing_weights !== router.prev_routing_weights
+        @test snap.prev_relevance !== router.prev_relevance
+        @test snap.surprise !== router.surprise
+        @test snap.scratch !== router.scratch
+
+        # Capture expected state at the snapshot point
+        expected_weights = copy(router.routing_weights)
+        expected_ema = copy(router.readout_ema)
+        expected_density = copy(router.spike_density)
+        expected_prev_w = copy(router.prev_routing_weights)
+        expected_prev_rel = copy(router.prev_relevance)
+        expected_surprise = copy(router.surprise)
+        expected_scratch = copy(router.scratch)
+        expected_tick = router.tick_count
+
+        # Mutate router away from snapshot
+        for _ = 1:3
+            regions = [ActivityRegion(rand(Float32), rand(Float32, 8)) for _ = 1:3]
+            update_routing!(router, regions)
+        end
+        @test router.tick_count == 8
+        @test router.routing_weights != expected_weights
+
+        # Restore
+        load_state!(router, snap)
+        @test router.tick_count == expected_tick
+        @test router.routing_weights == expected_weights
+        @test router.readout_ema == expected_ema
+        @test router.spike_density == expected_density
+        @test router.prev_routing_weights == expected_prev_w
+        @test router.prev_relevance == expected_prev_rel
+        @test router.surprise == expected_surprise
+        @test router.scratch == expected_scratch
+
+        # load_state alias works
+        mutate_snap = save_state(router)
+        router.tick_count = 0
+        fill!(router.routing_weights, 0.0f0)
+        load_state(router, mutate_snap)
+        @test router.tick_count == expected_tick
+        @test router.routing_weights == expected_weights
+
+        # Further ticks after restore remain consistent with a fresh twin
+        twin = RegionRouter(n_regions = 3, n_out = 8, region_names = ["A", "B", "C"])
+        load_state!(twin, snap)
+        regions = [
+            ActivityRegion(0.5f0, 0.5f0 .* ones(Float32, 8)),
+            ActivityRegion(0.4f0, 0.3f0 .* ones(Float32, 8)),
+            ActivityRegion(0.2f0, 0.1f0 .* ones(Float32, 8)),
+        ]
+        update_routing!(router, regions)
+        update_routing!(twin, regions)
+        @test router.tick_count == twin.tick_count == expected_tick + 1
+        @test router.routing_weights == twin.routing_weights
+        @test router.readout_ema == twin.readout_ema
+        @test router.surprise == twin.surprise
+    end
+
+    @testset "load_state! rejects dimension mismatch" begin
+        router = RegionRouter(n_regions = 4, n_out = 16)
+        other = RegionRouter(n_regions = 3, n_out = 8, region_names = ["A", "B", "C"])
+        update_routing!(
+            other,
+            [ActivityRegion(rand(Float32), rand(Float32, 8)) for _ = 1:3],
+        )
+        snap = save_state(other)
+        @test_throws ArgumentError load_state!(router, snap)
+
+        # Same n_regions/n_out labels but wrong vector length
+        bad = (
+            n_regions = 4,
+            n_out = 16,
+            region_names = copy(router.region_names),
+            adjacency_matrix = copy(router.adjacency_matrix),
+            inhibition_matrix = copy(router.inhibition_matrix),
+            routing_weights = zeros(Float32, 2),
+            readout_ema = zeros(Float32, 4, 16),
+            spike_density = zeros(Float32, 4),
+            prev_routing_weights = zeros(Float32, 4),
+            prev_relevance = zeros(Float32, 4),
+            surprise = zeros(Float32, 4),
+            scratch = zeros(Float32, 16),
+            tick_count = Int64(0),
+        )
+        @test_throws ArgumentError load_state!(router, bad)
+    end
+
+    @testset "load_state! rejects region_names mismatch" begin
+        source = RegionRouter(n_regions = 3, n_out = 4, region_names = ["A", "B", "C"])
+        update_routing!(
+            source,
+            [ActivityRegion(rand(Float32), rand(Float32, 4)) for _ = 1:3],
+        )
+        snap = save_state(source)
+        target = RegionRouter(n_regions = 3, n_out = 4, region_names = ["X", "Y", "Z"])
+        @test_throws ArgumentError load_state!(target, snap)
+        err = try
+            load_state!(target, snap)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("region_names", sprint(showerror, err))
+    end
+
+    @testset "load_state! rejects inhibition_matrix mismatch" begin
+        n = 3
+        n_out = 4
+        names = ["A", "B", "C"]
+        custom = Float32[
+            0.0 0.1 0.0
+            0.05 0.0 0.1
+            0.0 0.05 0.0
+        ]
+        source = RegionRouter(
+            n_regions = n,
+            n_out = n_out,
+            region_names = names,
+            inhibition_matrix = custom,
+        )
+        update_routing!(
+            source,
+            [ActivityRegion(rand(Float32), rand(Float32, n_out)) for _ = 1:n],
+        )
+        snap = save_state(source)
+        @test snap.inhibition_matrix == custom
+        @test snap.inhibition_matrix !== source.inhibition_matrix
+
+        # Same size, default inhibition — must not silently load
+        target = RegionRouter(n_regions = n, n_out = n_out, region_names = names)
+        @test target.inhibition_matrix != custom
+        @test_throws ArgumentError load_state!(target, snap)
+
+        # Matching custom matrix still loads
+        twin = RegionRouter(
+            n_regions = n,
+            n_out = n_out,
+            region_names = names,
+            inhibition_matrix = custom,
+        )
+        load_state!(twin, snap)
+        @test twin.routing_weights == source.routing_weights
+        @test twin.tick_count == source.tick_count
+    end
+
+    @testset "load_state! rejects snapshot missing structural fields" begin
+        router = RegionRouter(n_regions = 3, n_out = 4, region_names = ["A", "B", "C"])
+        update_routing!(
+            router,
+            [ActivityRegion(rand(Float32), rand(Float32, 4)) for _ = 1:3],
+        )
+        snap = save_state(router)
+        # Older/hand-built snapshot without structural fields
+        incomplete = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            scratch = snap.scratch,
+            tick_count = snap.tick_count,
+        )
+        @test_throws ArgumentError load_state!(router, incomplete)
+
+        # Missing only adjacency_matrix
+        no_adj = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            region_names = snap.region_names,
+            inhibition_matrix = snap.inhibition_matrix,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            scratch = snap.scratch,
+            tick_count = snap.tick_count,
+        )
+        err_adj = try
+            load_state!(router, no_adj)
+            nothing
+        catch e
+            e
+        end
+        @test err_adj isa ArgumentError
+        @test occursin("adjacency_matrix", sprint(showerror, err_adj))
+
+        # Missing only inhibition_matrix
+        no_inh = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            region_names = snap.region_names,
+            adjacency_matrix = snap.adjacency_matrix,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            scratch = snap.scratch,
+            tick_count = snap.tick_count,
+        )
+        err_inh = try
+            load_state!(router, no_inh)
+            nothing
+        catch e
+            e
+        end
+        @test err_inh isa ArgumentError
+        @test occursin("inhibition_matrix", sprint(showerror, err_inh))
+
+        # Missing only region_names
+        no_names = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            adjacency_matrix = snap.adjacency_matrix,
+            inhibition_matrix = snap.inhibition_matrix,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            scratch = snap.scratch,
+            tick_count = snap.tick_count,
+        )
+        err_names = try
+            load_state!(router, no_names)
+            nothing
+        catch e
+            e
+        end
+        @test err_names isa ArgumentError
+        @test occursin("region_names", sprint(showerror, err_names))
+    end
+
+
 end
