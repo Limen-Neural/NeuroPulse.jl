@@ -13,6 +13,7 @@ jobs:
           persist-credentials: false
       - uses: julia-actions/julia-format@cde9661e440a6a214c9c0c2c63a3dbdaa5fabd2f # v4
         with:
-          version: "1.12"
+          # JuliaFormatter package version (not Julia language version)
+          version: "1"
           check: "true"
           paths: "src/, test/"
