@@ -122,7 +122,7 @@ The second argument is `Real` (not only `Float32`) so ordinary numeric literals 
 
 Default adapter: `stress` is percent-scale in `[0, 100]` → unit interval, then
 lerped between `min_leak` and `max_leak`. Pass `stress_adapter` to map any other
-stress domain into `[0, 1]` first.
+stress domain into `[0, 1]`; the adapter output is clamped before interpolation.
 
 Notes:
 - this function is optional convenience logic

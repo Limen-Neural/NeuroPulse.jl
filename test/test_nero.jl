@@ -610,4 +610,33 @@ using TemporalFocus
         @test isapprox(leak[], 0.1f0 + 0.25f0 * (0.9f0 - 0.1f0), atol = 1e-5)
     end
 
+    @testset "adapt_leak! rejects non-finite bounds" begin
+        leak = Ref(0.0f0)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = NaN)
+        @test_throws ArgumentError adapt_leak!(leak, 50; max_leak = Inf)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = -Inf, max_leak = Inf)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = NaN, max_leak = 0.2f0)
+    end
+
+    @testset "adapt_leak! clamps custom adapter output" begin
+        leak = Ref(0.0f0)
+        over_adapter = s -> Float32(s) + 10.0f0
+        adapt_leak!(leak, 50.0; stress_adapter = over_adapter)
+        @test leak[] == 0.25f0
+
+        under_adapter = s -> Float32(s) - 100.0f0
+        adapt_leak!(leak, 50.0; stress_adapter = under_adapter)
+        @test leak[] == 0.01f0
+
+        # clamping respects custom bounds
+        adapt_leak!(
+            leak,
+            50.0;
+            min_leak = 0.1f0,
+            max_leak = 0.5f0,
+            stress_adapter = over_adapter,
+        )
+        @test leak[] == 0.5f0
+    end
+
 end

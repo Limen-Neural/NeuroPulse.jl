@@ -43,9 +43,7 @@ other stress conditions.
   `clamp(Float32(stress / 100), 0, 1)`. This preserves the previous default
   call shape (values that used to be fan-speed percents still work).
 - When `stress_adapter` is provided, it is called as `stress_adapter(stress)`
-  and must return a value in `[0, 1]` (callers are responsible for clamping if
-  needed). That unit value is then linearly interpolated between `min_leak` and
-  `max_leak`.
+  and the return value is clamped to `[0, 1]` before interpolation.
 
 # Arguments
 
@@ -58,7 +56,8 @@ other stress conditions.
 
 # Errors
 
-Throws `ArgumentError` if `min_leak > max_leak` after conversion to `Float32`.
+Throws `ArgumentError` if `min_leak` or `max_leak` is not finite, or if
+`min_leak > max_leak` after conversion to `Float32`.
 """
 function adapt_leak!(
     leak_rate::Ref{Float32},
@@ -69,6 +68,9 @@ function adapt_leak!(
 )
     lo = Float32(min_leak)
     hi = Float32(max_leak)
+    if !isfinite(lo) || !isfinite(hi)
+        throw(ArgumentError("min_leak and max_leak must be finite, got ($lo, $hi)"))
+    end
     if lo > hi
         throw(ArgumentError("min_leak ($lo) must be <= max_leak ($hi)"))
     end
@@ -76,7 +78,7 @@ function adapt_leak!(
         # divide in wider precision first, then narrow (avoids Float32 stress truncation)
         normalized = clamp(Float32(stress / 100), 0.0f0, 1.0f0)
     else
-        normalized = Float32(stress_adapter(stress))
+        normalized = clamp(Float32(stress_adapter(stress)), 0.0f0, 1.0f0)
     end
     leak_rate[] = lo + normalized * (hi - lo)
     return nothing
