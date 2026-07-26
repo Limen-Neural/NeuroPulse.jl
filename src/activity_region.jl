@@ -44,6 +44,8 @@ other stress conditions.
   call shape (values that used to be fan-speed percents still work).
 - When `stress_adapter` is provided, it is called as `stress_adapter(stress)`
   and the return value is clamped to `[0, 1]` before interpolation.
+- The normalized unit value must be finite; `NaN` inputs or adapter outputs
+  raise `ArgumentError` rather than silently producing a `NaN` leak rate.
 
 # Arguments
 
@@ -56,8 +58,9 @@ other stress conditions.
 
 # Errors
 
-Throws `ArgumentError` if `min_leak` or `max_leak` is not finite, or if
-`min_leak > max_leak` after conversion to `Float32`.
+Throws `ArgumentError` if `min_leak` or `max_leak` is not finite, if
+`min_leak > max_leak` after conversion to `Float32`, or if the normalized
+unit stress value is not finite.
 """
 function adapt_leak!(
     leak_rate::Ref{Float32},
@@ -79,6 +82,9 @@ function adapt_leak!(
         normalized = clamp(Float32(stress / 100), 0.0f0, 1.0f0)
     else
         normalized = clamp(Float32(stress_adapter(stress)), 0.0f0, 1.0f0)
+    end
+    if !isfinite(normalized)
+        throw(ArgumentError("normalized stress must be finite, got $normalized"))
     end
     leak_rate[] = lo + normalized * (hi - lo)
     return nothing

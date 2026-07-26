@@ -639,4 +639,19 @@ using TemporalFocus
         @test leak[] == 0.5f0
     end
 
+    @testset "adapt_leak! rejects non-finite normalized stress" begin
+        leak = Ref(0.0f0)
+        # NaN propagates through clamp and must raise ArgumentError
+        @test_throws ArgumentError adapt_leak!(leak, NaN)
+        @test_throws ArgumentError adapt_leak!(leak, 0.0; stress_adapter = _ -> NaN)
+
+        # Infinities are clamped to the unit bounds
+        adapt_leak!(leak, Inf)
+        @test leak[] == 0.25f0
+        adapt_leak!(leak, -Inf)
+        @test leak[] == 0.01f0
+        adapt_leak!(leak, 0.0; stress_adapter = _ -> Inf)
+        @test leak[] == 0.25f0
+    end
+
 end
