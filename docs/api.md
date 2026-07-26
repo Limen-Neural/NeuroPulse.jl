@@ -13,6 +13,7 @@ Preferred (generic) names:
 ```julia
 ActivityRegion
 RegionRouter
+RoutingConfig
 update_routing!
 routing_diagnostics
 adapt_leak!

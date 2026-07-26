@@ -78,8 +78,11 @@ end
 """
     RoutingConfig
 
-Per-router scoring knobs. Defaults match the module-level ALPHA..EPSILON constants
-so existing callers keep identical behaviour.
+Per-router scoring knobs. Defaults match the module-level ALPHA..EPSILON constants.
+
+Note: the snapshot-order change in LIM-230 activates `gamma` (momentum term) by
+capturing pre-update weights before the current tick overwrites them. Previously,
+`gamma` had no effect since the snapshot occurred after the update.
 
 All six fields must be finite. `alpha`/`beta`/`gamma`/`min_score` are non-negative,
 `ema_decay ∈ [0, 1]`, and `epsilon > 0`.
@@ -263,6 +266,14 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     router.tick_count += 1
     n = router.n_regions
     cfg = router.config
+    if cfg.min_score * Float32(n) > 1.0f0
+        throw(
+            ArgumentError(
+                "router.config.min_score ($(cfg.min_score)) * n_regions ($n) exceeds 1; " *
+                "post-normalization floor is impossible (require min_score ≤ 1/n_regions)",
+            ),
+        )
+    end
     raw = router.prev_relevance   # reuse buffer (prev no longer needed this tick)
 
     # ── Stage 1-3: per-region signal collection ───────────────────────────
@@ -317,14 +328,26 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         inhibited[i] = exp(inhibited[i] - max_val)
         s += inhibited[i]
     end
-    inhibited ./= (s + cfg.epsilon)
+    inhibited ./= s
 
     for i = 1:n
         if inhibited[i] < cfg.min_score
             inhibited[i] = cfg.min_score
         end
     end
-    inhibited ./= (sum(inhibited) + cfg.epsilon)
+
+    total = sum(inhibited)
+    floor_mass = Float32(n) * cfg.min_score
+    excess = total - floor_mass
+    if excess > cfg.epsilon
+        for i = 1:n
+            inhibited[i] = cfg.min_score + (inhibited[i] - cfg.min_score) * (1.0f0 - floor_mass) / excess
+        end
+    else
+        for i = 1:n
+            inhibited[i] = 1.0f0 / Float32(n)
+        end
+    end
 
     return nothing
 end
