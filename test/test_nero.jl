@@ -533,5 +533,125 @@ using TemporalFocus
         @test occursin("region_names", sprint(showerror, err_names))
     end
 
+    # ── adapt_leak! (LIM-233 / GH#27) ──────────────────────────────────────────
+
+    @testset "adapt_leak! default stress percent scale [0, 100]" begin
+        # Default adapter: stress is a percent-like signal in [0, 100] → unit interval,
+        # then lerped to leak bounds. (Back-compat with old fan-speed call sites.)
+        leak = Ref(0.0f0)
+        adapt_leak!(leak, 0)   # zero stress → min_leak
+        @test leak[] == 0.01f0
+
+        adapt_leak!(leak, 100) # full stress → max_leak
+        @test leak[] == 0.25f0
+
+        adapt_leak!(leak, 50)  # mid stress
+        @test isapprox(leak[], 0.13f0, atol = 1e-5)
+
+        # stress outside [0, 100] clamps to endpoints
+        adapt_leak!(leak, -10)
+        @test leak[] == 0.01f0
+        adapt_leak!(leak, 200)
+        @test leak[] == 0.25f0
+    end
+
+    @testset "adapt_leak! custom min/max with stress" begin
+        leak = Ref(0.0f0)
+        adapt_leak!(leak, 0; min_leak = 0.05f0, max_leak = 0.50f0)
+        @test leak[] == 0.05f0
+
+        adapt_leak!(leak, 100; min_leak = 0.05f0, max_leak = 0.50f0)
+        @test leak[] == 0.50f0
+
+        adapt_leak!(leak, 50; min_leak = 0.05f0, max_leak = 0.50f0)
+        @test isapprox(leak[], 0.275f0, atol = 1e-5)
+    end
+
+    @testset "adapt_leak! Real stress bounds kwargs" begin
+        leak = Ref(0.0f0)
+        # Float64 kwargs accepted and converted to Float32 internally
+        adapt_leak!(leak, 0; min_leak = 0.05, max_leak = 0.50)
+        @test leak[] == 0.05f0
+
+        adapt_leak!(leak, 100; min_leak = 0.05, max_leak = 0.50)
+        @test leak[] == 0.50f0
+
+        adapt_leak!(leak, 50; min_leak = 0.05, max_leak = 0.50)
+        @test isapprox(leak[], 0.275f0, atol = 1e-5)
+    end
+
+    @testset "adapt_leak! inverted stress bounds" begin
+        leak = Ref(0.0f0)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = 0.5f0, max_leak = 0.1f0)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = 0.5, max_leak = 0.1)
+    end
+
+    @testset "adapt_leak! custom stress_adapter" begin
+        leak = Ref(0.0f0)
+        # identity adapter: stress already in unit interval [0, 1]
+        unit_adapter = s -> Float32(s)
+        adapt_leak!(leak, 0.0; stress_adapter = unit_adapter)
+        @test leak[] == 0.01f0
+
+        adapt_leak!(leak, 1.0; stress_adapter = unit_adapter)
+        @test leak[] == 0.25f0
+
+        adapt_leak!(leak, 0.5; stress_adapter = unit_adapter)
+        @test isapprox(leak[], 0.13f0, atol = 1e-5)
+
+        # custom stress adapter + custom min/max
+        adapt_leak!(
+            leak,
+            0.25;
+            min_leak = 0.1f0,
+            max_leak = 0.9f0,
+            stress_adapter = unit_adapter,
+        )
+        @test isapprox(leak[], 0.1f0 + 0.25f0 * (0.9f0 - 0.1f0), atol = 1e-5)
+    end
+
+    @testset "adapt_leak! rejects non-finite bounds" begin
+        leak = Ref(0.0f0)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = NaN)
+        @test_throws ArgumentError adapt_leak!(leak, 50; max_leak = Inf)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = -Inf, max_leak = Inf)
+        @test_throws ArgumentError adapt_leak!(leak, 50; min_leak = NaN, max_leak = 0.2f0)
+    end
+
+    @testset "adapt_leak! clamps custom adapter output" begin
+        leak = Ref(0.0f0)
+        over_adapter = s -> Float32(s) + 10.0f0
+        adapt_leak!(leak, 50.0; stress_adapter = over_adapter)
+        @test leak[] == 0.25f0
+
+        under_adapter = s -> Float32(s) - 100.0f0
+        adapt_leak!(leak, 50.0; stress_adapter = under_adapter)
+        @test leak[] == 0.01f0
+
+        # clamping respects custom bounds
+        adapt_leak!(
+            leak,
+            50.0;
+            min_leak = 0.1f0,
+            max_leak = 0.5f0,
+            stress_adapter = over_adapter,
+        )
+        @test leak[] == 0.5f0
+    end
+
+    @testset "adapt_leak! rejects NaN and clamps infinities" begin
+        leak = Ref(0.0f0)
+        # NaN propagates through clamp and must raise ArgumentError
+        @test_throws ArgumentError adapt_leak!(leak, NaN)
+        @test_throws ArgumentError adapt_leak!(leak, 0.0; stress_adapter = _ -> NaN)
+
+        # Infinities are clamped to the unit bounds
+        adapt_leak!(leak, Inf)
+        @test leak[] == 0.25f0
+        adapt_leak!(leak, -Inf)
+        @test leak[] == 0.01f0
+        adapt_leak!(leak, 0.0; stress_adapter = _ -> Inf)
+        @test leak[] == 0.25f0
+    end
 
 end

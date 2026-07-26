@@ -132,7 +132,7 @@ function RegionRouter(;
     # Auto-generate region names if not enough provided
     if length(region_names) < n_regions
         region_names =
-            vcat(region_names, ["Region$i" for i = length(region_names)+1:n_regions])
+            vcat(region_names, ["Region$i" for i = (length(region_names)+1):n_regions])
     end
     region_names = region_names[1:n_regions]
 

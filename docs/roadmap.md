@@ -38,12 +38,12 @@ The default lobe names are:
 Those are useful examples, but they imply a specific older context. Future cleanup should
 separate example defaults from the core conceptual model.
 
-### 3. Stress adaptation is too narrowly framed
+### 3. Stress adaptation is generic with a default percent-scale adapter
 
-`adapt_leak!` currently assumes a fan-speed-like stress input. That is fine as a helper,
-but the long-term package boundary may want either:
-- a more generic stress adapter API, or
-- moving that helper into a separate integration layer
+`adapt_leak!` now supports a generic stress signal via the optional `stress_adapter`
+keyword. The default adapter still interprets `[0, 100]` percent-scale input for
+backward compatibility; callers may supply a custom adapter to map arbitrary stress
+domains into `[0, 1]` before interpolation.
 
 ### 4. Configuration surface is still minimal
 

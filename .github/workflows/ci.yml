@@ -18,13 +18,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # Cost control: single Julia version for now (Actions usage). Expand later if needed.
       matrix:
         version:
-          - '1.9'
-          - '1.10'
-          - '1.11'
           - '1.12'
-          - 'nightly'
         os:
           - ubuntu-latest
           - macOS-latest

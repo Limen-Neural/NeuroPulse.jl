@@ -74,7 +74,7 @@ The package still carries some historical assumptions:
 
 - NERO terminology is still part of the API
 - default lobe names reflect an older four-part example layout
-- `adapt_leak!` is currently framed around fan-speed-like stress input
+- `adapt_leak!` now accepts a generic stress signal via `stress_adapter`; the default adapter still interprets `[0, 100]` percent-scale input for backward compatibility
 - docs and naming are cleaner than before, but the package is still early
 
 ## Practical interpretation for users

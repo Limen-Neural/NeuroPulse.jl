@@ -154,7 +154,7 @@ RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES)
 
 update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
 routing_diagnostics(router::RegionRouter)
-adapt_leak!(leak_rate::Ref{Float32}, fan_speed_perc::Float32)
+adapt_leak!(leak_rate::Ref{Float32}, stress::Real; min_leak=0.01f0, max_leak=0.25f0, stress_adapter=nothing)
 ```
 
 Legacy aliases (`LobeState`, `NeroOrchestrator`, `update_relevance!`, `nero_diagnostics`)
@@ -166,7 +166,7 @@ A few defaults still reflect the package's original extraction context:
 
 - the default lobe names are `Attention`, `FFN`, `Memory`, and `Output`
 - the default inhibition matrix is tuned for a 4-component example layout
-- `adapt_leak!` assumes a fan-speed-like stress signal in `[0, 100]`
+- `adapt_leak!` default stress scale is percent-like in `[0, 100]` (custom `stress_adapter` allowed)
 - the package currently exposes NERO terminology directly in type/function names
 
 Those defaults are serviceable, but they are not the final abstraction boundary.
