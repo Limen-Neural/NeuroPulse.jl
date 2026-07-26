@@ -533,7 +533,7 @@ using TemporalFocus
         @test occursin("region_names", sprint(showerror, err_names))
     end
 
-# ── adapt_leak! (LIM-233 / GH#27) ──────────────────────────────────────────
+    # ── adapt_leak! (LIM-233 / GH#27) ──────────────────────────────────────────
 
     @testset "adapt_leak! default stress percent scale [0, 100]" begin
         # Default adapter: stress is a percent-like signal in [0, 100] → unit interval,
