@@ -128,6 +128,18 @@ struct RoutingConfig
 end
 RoutingConfig() = RoutingConfig(ALPHA, BETA, GAMMA, EMA_DECAY, MIN_SCORE, EPSILON)
 
+function _validate_floor_feasibility(min_score::Float32, n_regions::Int)
+    if min_score * Float32(n_regions) > 1.0f0
+        throw(
+            ArgumentError(
+                "min_score ($min_score) * n_regions ($n_regions) exceeds 1; " *
+                "post-normalization floor is impossible (require min_score ≤ 1/n_regions)",
+            ),
+        )
+    end
+    return nothing
+end
+
 # ── Router State ──────────────────────────────────────────────────────────────
 
 """
@@ -187,14 +199,7 @@ function RegionRouter(;
     inhibition_matrix::Union{Nothing,AbstractMatrix} = nothing,
     config::RoutingConfig = RoutingConfig(),
 )
-    if config.min_score * Float32(n_regions) > 1.0f0
-        throw(
-            ArgumentError(
-                "min_score ($(config.min_score)) * n_regions ($n_regions) exceeds 1; " *
-                "post-normalization floor is impossible (require min_score ≤ 1/n_regions)",
-            ),
-        )
-    end
+    _validate_floor_feasibility(config.min_score, n_regions)
 
     # Auto-generate region names if not enough provided
     if length(region_names) < n_regions
@@ -263,17 +268,10 @@ Cross-region inhibition:
 Softmax normalisation → sum(relevance) = 1.0, each ≥ MIN_SCORE.
 """
 function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
-    router.tick_count += 1
     n = router.n_regions
     cfg = router.config
-    if cfg.min_score * Float32(n) > 1.0f0
-        throw(
-            ArgumentError(
-                "router.config.min_score ($(cfg.min_score)) * n_regions ($n) exceeds 1; " *
-                "post-normalization floor is impossible (require min_score ≤ 1/n_regions)",
-            ),
-        )
-    end
+    _validate_floor_feasibility(cfg.min_score, n)
+    router.tick_count += 1
     raw = router.prev_relevance   # reuse buffer (prev no longer needed this tick)
 
     # ── Stage 1-3: per-region signal collection ───────────────────────────
@@ -339,7 +337,7 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     total = sum(inhibited)
     floor_mass = Float32(n) * cfg.min_score
     excess = total - floor_mass
-    if excess > cfg.epsilon
+    if excess > 1.0f-6
         for i = 1:n
             inhibited[i] = cfg.min_score + (inhibited[i] - cfg.min_score) * (1.0f0 - floor_mass) / excess
         end
@@ -462,14 +460,7 @@ function load_state!(router::RegionRouter, snap)
         cfg isa RoutingConfig || throw(
             ArgumentError("snapshot config must be a RoutingConfig, got $(typeof(cfg))"),
         )
-        # Re-validate min_score against this router's size (config may be hand-built).
-        if cfg.min_score * Float32(n) > 1.0f0
-            throw(
-                ArgumentError(
-                    "snapshot config.min_score ($(cfg.min_score)) * n_regions ($n) exceeds 1",
-                ),
-            )
-        end
+        _validate_floor_feasibility(cfg.min_score, n)
         router.config = cfg
     end
 
