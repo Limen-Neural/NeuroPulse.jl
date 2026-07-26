@@ -80,6 +80,12 @@ end
 
 Per-router scoring knobs. Defaults match the module-level ALPHA..EPSILON constants
 so existing callers keep identical behaviour.
+
+All six fields must be finite. `alpha`/`beta`/`gamma`/`min_score` are non-negative,
+`ema_decay ∈ [0, 1]`, and `epsilon > 0`.
+
+`min_score` is also checked against router size in [`RegionRouter`](@ref):
+`min_score * n_regions ≤ 1` so a post-normalization floor is feasible.
 """
 struct RoutingConfig
     alpha::Float32
@@ -96,6 +102,16 @@ struct RoutingConfig
         d = Float32(ema_decay)
         m = Float32(min_score)
         e = Float32(epsilon)
+        for (name, v) in (
+            (:alpha, a),
+            (:beta, b),
+            (:gamma, g),
+            (:ema_decay, d),
+            (:min_score, m),
+            (:epsilon, e),
+        )
+            isfinite(v) || throw(ArgumentError("$name must be finite, got $v"))
+        end
         a >= 0.0f0 || throw(ArgumentError("alpha must be non-negative, got $a"))
         b >= 0.0f0 || throw(ArgumentError("beta must be non-negative, got $b"))
         g >= 0.0f0 || throw(ArgumentError("gamma must be non-negative, got $g"))
@@ -168,6 +184,14 @@ function RegionRouter(;
     inhibition_matrix::Union{Nothing,AbstractMatrix} = nothing,
     config::RoutingConfig = RoutingConfig(),
 )
+    if config.min_score * Float32(n_regions) > 1.0f0
+        throw(
+            ArgumentError(
+                "min_score ($(config.min_score)) * n_regions ($n_regions) exceeds 1; " *
+                "post-normalization floor is impossible (require min_score ≤ 1/n_regions)",
+            ),
+        )
+    end
 
     # Auto-generate region names if not enough provided
     if length(region_names) < n_regions
@@ -269,7 +293,12 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
             cfg.gamma * momentum
     end
 
+    # Snapshot pre-update weights before overwriting `routing_weights` so the next
+    # tick's momentum term is |w_t - w_{t-1}| (makes `cfg.gamma` effective).
+    copyto!(router.prev_routing_weights, router.routing_weights)
+
     # ── Stage 4: cross-region graph inhibition ────────────────────────────
+    # Reuses `routing_weights` as the inhibited / softmax workspace (in-place).
     inhibited = router.routing_weights
     for dst = 1:n
         inh_sum = 0.0f0
@@ -297,9 +326,6 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     end
     inhibited ./= (sum(inhibited) + cfg.epsilon)
 
-    # Snapshot current weights for next tick's momentum calculation
-    copyto!(router.prev_routing_weights, router.routing_weights)
-
     return nothing
 end
 
@@ -313,9 +339,11 @@ Copy mutable routing state into a serializable `NamedTuple` for checkpointing.
 Includes `n_regions` and `n_out` for load-time validation, plus copies of
 `region_names`, `adjacency_matrix`, and `inhibition_matrix` so loads can reject
 routers whose labels/graph/inhibition config does not match the experiment that
-produced the snapshot. Mutable array fields are independent copies (`copy`) so
-later `update_routing!` calls do not mutate the snapshot. Element types are
-immutable (`Float32` / `String`), so `copy` is sufficient.
+produced the snapshot. Also records `config::RoutingConfig` so scoring knobs
+round-trip with the checkpoint. Mutable array fields are independent copies
+(`copy`) so later `update_routing!` calls do not mutate the snapshot. Element
+types are immutable (`Float32` / `String` / `RoutingConfig`), so `copy` is
+sufficient for arrays.
 """
 function save_state(router::RegionRouter)
     return (
@@ -324,6 +352,7 @@ function save_state(router::RegionRouter)
         region_names = copy(router.region_names),
         adjacency_matrix = copy(router.adjacency_matrix),
         inhibition_matrix = copy(router.inhibition_matrix),
+        config = router.config,
         routing_weights = copy(router.routing_weights),
         readout_ema = copy(router.readout_ema),
         spike_density = copy(router.spike_density),
@@ -348,6 +377,10 @@ Throws `ArgumentError` if:
 
 Structural fields are validated but not restored — the target router must
 already be configured for the same experiment labels/graph/inhibition.
+
+When the snapshot includes `config` (always written by current `save_state`),
+it is restored onto the target router so scoring knobs match the checkpointed
+experiment. Older snapshots without `config` leave the target's config unchanged.
 """
 function load_state!(router::RegionRouter, snap)
     n = router.n_regions
@@ -399,6 +432,22 @@ function load_state!(router::RegionRouter, snap)
     _check_vec_len(snap.surprise, n, :surprise)
     if hasproperty(snap, :scratch)
         _check_vec_len(snap.scratch, n_out, :scratch)
+    end
+
+    if hasproperty(snap, :config)
+        cfg = snap.config
+        cfg isa RoutingConfig || throw(
+            ArgumentError("snapshot config must be a RoutingConfig, got $(typeof(cfg))"),
+        )
+        # Re-validate min_score against this router's size (config may be hand-built).
+        if cfg.min_score * Float32(n) > 1.0f0
+            throw(
+                ArgumentError(
+                    "snapshot config.min_score ($(cfg.min_score)) * n_regions ($n) exceeds 1",
+                ),
+            )
+        end
+        router.config = cfg
     end
 
     copyto!(router.routing_weights, snap.routing_weights)

@@ -86,22 +86,24 @@ Mutable routing state. Pre-allocated at construction; the hot path of
 | `routing_weights` | `Vector{Float32}` length `n_regions` | **Primary output**; sums to **~1** after each tick |
 | `readout_ema` | `Matrix{Float32}` `n_regions × n_out` | Per-region EMA of readouts |
 | `spike_density` | `Vector{Float32}` length `n_regions` | Last tick’s rates (copy of inputs) |
-| `prev_routing_weights` | `Vector{Float32}` length `n_regions` | Momentum buffer; after a normal `update_routing!` call it equals the just-written `routing_weights` (not a preserved prior-tick snapshot for external readers) |
+| `prev_routing_weights` | `Vector{Float32}` length `n_regions` | Prior-tick `routing_weights` snapshot used for the γ momentum term; after `update_routing!` holds the pre-update weights (not equal to the just-written `routing_weights` once weights change) |
 | `prev_relevance` | `Vector{Float32}` length `n_regions` | Scratch / last raw scores |
 | `surprise` | `Vector{Float32}` length `n_regions` | Manifold surprise per region |
 | `scratch` | `Vector{Float32}` length `n_out` | Hot-path scratch buffer |
 | `tick_count` | `Int64` | Global tick counter |
+| `config` | `RoutingConfig` | Per-router α/β/γ, EMA decay, min_score, epsilon |
 
 Constructor:
 
 ```julia
 RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES,
-               inhibition_matrix=nothing)
+               inhibition_matrix=nothing, config=RoutingConfig())
 ```
 
 Initial `routing_weights` are uniform (`1 / n_regions`). When `inhibition_matrix`
 is `nothing`, a default matrix is generated as described above; otherwise the
-provided matrix must be `n_regions × n_regions`.
+provided matrix must be `n_regions × n_regions`. `config.min_score * n_regions`
+must be `≤ 1`.
 
 **Legacy alias:** `NeroOrchestrator === RegionRouter`.
 
@@ -154,14 +156,14 @@ The following are **not** package types and are **not** part of this freeze:
 - Spike trains / event lists (`Vector` of times or `(neuron, t)` pairs)
 - Full membrane or synapse tensors
 - Shared “modulator” blobs beyond `ActivityRegion.output`
-- Config objects for α/β/γ scoring weights (still module-level constants)
 
+Scoring knobs **are** configurable via `RoutingConfig` / `RegionRouter(; config=...)`.
 Inhibition **is** configurable via `RegionRouter(; inhibition_matrix=...)` (see
 `RegionRouter` fields above). Default still seeds from the historical 4×4
 `INHIBIT` table when `n_regions ≤ 4`.
 
-If a workflow needs spike trains or scoring-config objects, they belong in the
-surrounding SNN/runtime package; only the compact summaries cross into TemporalFocus.
+If a workflow needs spike trains, they belong in the surrounding SNN/runtime
+package; only the compact summaries cross into TemporalFocus.
 
 ---
 
