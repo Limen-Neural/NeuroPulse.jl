@@ -17,6 +17,9 @@ RoutingConfig
 update_routing!
 routing_diagnostics
 adapt_leak!
+save_state
+load_state!
+load_state
 ```
 
 Legacy aliases (same objects):

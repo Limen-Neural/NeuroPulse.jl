@@ -129,6 +129,7 @@ end
 RoutingConfig() = RoutingConfig(ALPHA, BETA, GAMMA, EMA_DECAY, MIN_SCORE, EPSILON)
 
 function _validate_floor_feasibility(min_score::Float32, n_regions::Int)
+    n_regions > 0 || throw(ArgumentError("n_regions must be positive, got $n_regions"))
     if min_score * Float32(n_regions) > 1.0f0
         throw(
             ArgumentError(
@@ -180,6 +181,19 @@ mutable struct RegionRouter
     scratch::Vector{Float32}
     tick_count::Int64
     config::RoutingConfig
+end
+
+"""
+Validate `config` against this router's `n_regions` when replacing `router.config`.
+"""
+function Base.setproperty!(router::RegionRouter, name::Symbol, value)
+    if name === :config
+        value isa RoutingConfig ||
+            throw(ArgumentError("config must be a RoutingConfig, got $(typeof(value))"))
+        _validate_floor_feasibility(value.min_score, getfield(router, :n_regions))
+        return setfield!(router, :config, value)
+    end
+    return setfield!(router, name, value)
 end
 
 """
@@ -339,7 +353,9 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     excess = total - floor_mass
     if excess > 1.0f-6
         for i = 1:n
-            inhibited[i] = cfg.min_score + (inhibited[i] - cfg.min_score) * (1.0f0 - floor_mass) / excess
+            inhibited[i] =
+                cfg.min_score +
+                (inhibited[i] - cfg.min_score) * (1.0f0 - floor_mass) / excess
         end
     else
         for i = 1:n

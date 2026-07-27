@@ -64,6 +64,13 @@ using TemporalFocus
         @test_throws ArgumentError RegionRouter(
             config = RoutingConfig(A, B, G, D, 0.4f0, E),
         )  # min_score * 4 > 1
+        @test_throws ArgumentError RegionRouter(n_regions = 0)
+        # Direct config reassignment must re-check floor feasibility
+        r = RegionRouter()
+        bad = RoutingConfig(A, B, G, D, 0.4f0, E)
+        @test_throws ArgumentError (r.config = bad)
+        r.config = RoutingConfig(A, B, G, D, M, E)  # valid
+        @test r.config.min_score == M
     end
 
     @testset "gamma momentum affects routing after first tick" begin

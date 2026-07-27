@@ -22,6 +22,7 @@ outputs. It describes what the package **owns** and what it **does not**.
 |----------------|------|
 | `ActivityRegion` | Compact per-region summary for one tick |
 | `RegionRouter` | Mutable routing state (pre-allocated buffers) |
+| `RoutingConfig` | Per-router scoring knobs (α/β/γ, EMA decay, min_score, epsilon) |
 | `update_routing!` | In-place per-tick relevance update |
 | `routing_diagnostics` | Lightweight string summary for logs |
 | `adapt_leak!` | Optional stress → leak helper (not core routing) |
@@ -109,6 +110,41 @@ must be `≤ 1`.
 
 ---
 
+### `RoutingConfig`
+
+Per-router scoring knobs used by `update_routing!`.
+
+```julia
+struct RoutingConfig
+    alpha::Float32
+    beta::Float32
+    gamma::Float32
+    ema_decay::Float32
+    min_score::Float32
+    epsilon::Float32
+end
+```
+
+| Field | Contract |
+|-------|----------|
+| `alpha` | Weight for spike density contribution (≥ 0) |
+| `beta` | Weight for manifold surprise contribution (≥ 0) |
+| `gamma` | Weight for readout EMA momentum (≥ 0) |
+| `ema_decay` | EMA smoothing factor in **`[0, 1]`** |
+| `min_score` | Soft floor for routing weights (≥ 0; `min_score * n_regions ≤ 1`) |
+| `epsilon` | Numerical stability floor (> 0) |
+
+Constructor:
+
+```julia
+RoutingConfig()  # defaults match module-level ALPHA..EPSILON constants
+RoutingConfig(alpha, beta, gamma, ema_decay, min_score, epsilon)
+```
+
+All values must be finite. The `min_score * n_regions ≤ 1` constraint is validated by `RegionRouter` constructor.
+
+---
+
 ## Tick contract
 
 ```julia
@@ -123,7 +159,7 @@ update_routing!(router::RegionRouter, regions::Vector{ActivityRegion}) -> nothin
 
 | Output (in-place on `router`) | Contract |
 |-------------------------------|----------|
-| `router.routing_weights` | length `n_regions`, **positive** entries, **sum ≈ 1** (`router.config.min_score` clamps pre-/mid-normalization scores only; final entries may fall below `router.config.min_score` after re-normalization) |
+| `router.routing_weights` | length `n_regions`, **positive** entries **≥ `router.config.min_score`**, **sum ≈ 1** (final weights are normalized to maintain the floor; `router.config.min_score * n_regions ≤ 1` ensures this is feasible) |
 | `router.surprise`, `router.spike_density`, … | updated diagnostics; readable after the call |
 | return value | `nothing` (consume `routing_weights`, not a return vector) |
 
@@ -163,7 +199,7 @@ Inhibition **is** configurable via `RegionRouter(; inhibition_matrix=...)` (see
 `INHIBIT` table when `n_regions ≤ 4`.
 
 If a workflow needs spike trains, they belong in the surrounding SNN/runtime
-package; only the compact summaries cross into TemporalFocus.
+package; only the per-tick compact activity summaries cross into TemporalFocus.
 
 ---
 
