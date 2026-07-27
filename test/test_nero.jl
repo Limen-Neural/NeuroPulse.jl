@@ -71,6 +71,48 @@ using TemporalFocus
         @test_throws ArgumentError (r.config = bad)
         r.config = RoutingConfig(A, B, G, D, M, E)  # valid
         @test r.config.min_score == M
+        @test_throws ArgumentError (r.config = "not-a-config")
+    end
+
+    @testset "min_score saturating floor uses uniform renorm" begin
+        # When min_score * n_regions == 1 and softmax is already uniform,
+        # excess ≈ 0 and the uniform fallback branch runs (codecov).
+        # Zero inhibition + identical inputs → equal raw scores → uniform softmax.
+        cfg = RoutingConfig(
+            TemporalFocus.ALPHA,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            TemporalFocus.EMA_DECAY,
+            0.25f0,  # 0.25 * 4 == 1
+            TemporalFocus.EPSILON,
+        )
+        router = RegionRouter(
+            config = cfg,
+            inhibition_matrix = zeros(Float32, 4, 4),
+        )
+        regions = [ActivityRegion(1.0f0, ones(Float32, 16)) for _ = 1:4]
+        update_routing!(router, regions)
+        @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-5)
+        @test all(w -> isapprox(w, 0.25f0; atol = 1e-4), router.routing_weights)
+
+        # Single-region router: softmax is always 1, floor mass == 1 → same branch.
+        cfg1 = RoutingConfig(
+            TemporalFocus.ALPHA,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            TemporalFocus.EMA_DECAY,
+            1.0f0,
+            TemporalFocus.EPSILON,
+        )
+        r1 = RegionRouter(
+            n_regions = 1,
+            n_out = 4,
+            region_names = ["Only"],
+            config = cfg1,
+            inhibition_matrix = zeros(Float32, 1, 1),
+        )
+        update_routing!(r1, [ActivityRegion(0.7f0, ones(Float32, 4))])
+        @test isapprox(r1.routing_weights[1], 1.0f0, atol = 1e-5)
     end
 
     @testset "gamma momentum affects routing after first tick" begin
@@ -661,6 +703,30 @@ using TemporalFocus
         end
         @test err_names isa ArgumentError
         @test occursin("region_names", sprint(showerror, err_names))
+
+        # Legacy snapshot without scratch: fill! zero path
+        no_scratch = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            region_names = snap.region_names,
+            adjacency_matrix = snap.adjacency_matrix,
+            inhibition_matrix = snap.inhibition_matrix,
+            config = snap.config,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            tick_count = snap.tick_count,
+        )
+        fill!(router.scratch, 1.0f0)
+        load_state!(router, no_scratch)
+        @test all(iszero, router.scratch)
+
+        # adjacency_matrix mismatch
+        bad_adj = merge(snap, (; adjacency_matrix = ones(Float32, 3, 3)))
+        @test_throws ArgumentError load_state!(router, bad_adj)
     end
 
     # ── adapt_leak! (LIM-233 / GH#27) ──────────────────────────────────────────
