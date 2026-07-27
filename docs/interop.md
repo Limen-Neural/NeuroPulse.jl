@@ -159,7 +159,7 @@ update_routing!(router::RegionRouter, regions::Vector{ActivityRegion}) -> nothin
 
 | Output (in-place on `router`) | Contract |
 |-------------------------------|----------|
-| `router.routing_weights` | length `n_regions`, **positive** entries **≥ `router.config.min_score`**, **sum ≈ 1** (final weights are normalized to maintain the floor; `router.config.min_score * n_regions ≤ 1` ensures this is feasible) |
+| `router.routing_weights` | length `n_regions`, **non-negative** entries **≥ `router.config.min_score`** (positive if `min_score > 0`), **sum ≈ 1** (final weights are normalized to maintain the floor; `router.config.min_score * n_regions ≤ 1` ensures this is feasible) |
 | `router.surprise`, `router.spike_density`, … | updated diagnostics; readable after the call |
 | return value | `nothing` (consume `routing_weights`, not a return vector) |
 

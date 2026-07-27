@@ -19,7 +19,6 @@ routing_diagnostics
 adapt_leak!
 save_state
 load_state!
-load_state
 ```
 
 Legacy aliases (same objects):
@@ -29,6 +28,7 @@ LobeState          # === ActivityRegion
 NeroOrchestrator   # === RegionRouter
 update_relevance!  # === update_routing!
 nero_diagnostics   # === routing_diagnostics
+load_state         # === load_state! (mutating compatibility alias)
 ```
 
 ## `ActivityRegion` / `LobeState`

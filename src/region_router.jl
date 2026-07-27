@@ -193,7 +193,7 @@ function Base.setproperty!(router::RegionRouter, name::Symbol, value)
         _validate_floor_feasibility(value.min_score, getfield(router, :n_regions))
         return setfield!(router, :config, value)
     end
-    return setfield!(router, name, value)
+    return invoke(setproperty!, Tuple{Any,Symbol,Any}, router, name, value)
 end
 
 """
