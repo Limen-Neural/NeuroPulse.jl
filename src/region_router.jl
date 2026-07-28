@@ -88,7 +88,7 @@ All six fields must be finite. `alpha`/`beta`/`gamma`/`min_score` are non-negati
 `ema_decay ∈ [0, 1]`, and `epsilon > 0`.
 
 `min_score` is also checked against router size in [`RegionRouter`](@ref):
-`min_score * n_regions ≤ 1` so a post-normalization floor is feasible.
+`min_score ≤ 1/n_regions` in Float32 so a post-normalization floor is feasible.
 """
 struct RoutingConfig
     alpha::Float32
@@ -130,11 +130,14 @@ RoutingConfig() = RoutingConfig(ALPHA, BETA, GAMMA, EMA_DECAY, MIN_SCORE, EPSILO
 
 function _validate_floor_feasibility(min_score::Float32, n_regions::Int)
     n_regions > 0 || throw(ArgumentError("n_regions must be positive, got $n_regions"))
-    if min_score * Float32(n_regions) > 1.0f0
+    # Compare against the representable uniform weight, not `min_score * n` (which can
+    # round to 1.0f0 while min_score is still strictly above 1/n in Float32).
+    uniform = 1.0f0 / Float32(n_regions)
+    if min_score > uniform
         throw(
             ArgumentError(
-                "min_score ($min_score) * n_regions ($n_regions) exceeds 1; " *
-                "post-normalization floor is impossible (require min_score ≤ 1/n_regions)",
+                "min_score ($min_score) exceeds representable uniform weight " *
+                "1/n_regions ($uniform) for n_regions=$n_regions",
             ),
         )
     end
@@ -305,6 +308,12 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         delta_norm = norm(router.scratch)
         ema_norm = norm(ema_row) + cfg.epsilon
         router.surprise[i] = delta_norm / ema_norm
+        isfinite(router.surprise[i]) || throw(
+            ArgumentError(
+                "non-finite surprise for region $i (got $(router.surprise[i])); " *
+                "check ema_decay/epsilon/readout scale",
+            ),
+        )
 
         # 4. Momentum
         momentum = abs(router.routing_weights[i] - router.prev_routing_weights[i])
@@ -314,6 +323,12 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
             cfg.alpha * router.spike_density[i] +
             cfg.beta * router.surprise[i] +
             cfg.gamma * momentum
+        isfinite(raw[i]) || throw(
+            ArgumentError(
+                "non-finite raw score for region $i (got $(raw[i])); " *
+                "check alpha/beta/gamma magnitudes",
+            ),
+        )
     end
 
     # Snapshot pre-update weights before overwriting `routing_weights` so the next
@@ -331,16 +346,22 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
             end
         end
         inhibited[dst] = max(raw[dst] - inh_sum, cfg.min_score)
+        isfinite(inhibited[dst]) || throw(
+            ArgumentError(
+                "non-finite inhibited score for region $dst (got $(inhibited[dst]))",
+            ),
+        )
     end
 
     # ── Stage 5: softmax normalisation ────────────────────────────────────
+    # `epsilon` is the shared stability floor (surprise denom + softmax normalizer).
     max_val = maximum(inhibited)
     s = 0.0f0
     for i = 1:n
         inhibited[i] = exp(inhibited[i] - max_val)
         s += inhibited[i]
     end
-    inhibited ./= s
+    inhibited ./= (s + cfg.epsilon)
 
     for i = 1:n
         if inhibited[i] < cfg.min_score
@@ -351,7 +372,7 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     total = sum(inhibited)
     floor_mass = Float32(n) * cfg.min_score
     excess = total - floor_mass
-    if excess > 1.0f-6
+    if excess > cfg.epsilon
         for i = 1:n
             inhibited[i] =
                 cfg.min_score +

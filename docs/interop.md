@@ -103,8 +103,8 @@ RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES,
 
 Initial `routing_weights` are uniform (`1 / n_regions`). When `inhibition_matrix`
 is `nothing`, a default matrix is generated as described above; otherwise the
-provided matrix must be `n_regions × n_regions`. `config.min_score * n_regions`
-must be `≤ 1`.
+provided matrix must be `n_regions × n_regions`. `config.min_score` must be
+`≤ 1/n_regions` in Float32 (compared to the representable uniform weight).
 
 **Legacy alias:** `NeroOrchestrator === RegionRouter`.
 
@@ -131,7 +131,7 @@ end
 | `beta` | Weight for manifold surprise contribution (≥ 0) |
 | `gamma` | Weight for readout EMA momentum (≥ 0) |
 | `ema_decay` | EMA smoothing factor in **`[0, 1]`** |
-| `min_score` | Soft floor for routing weights (≥ 0; `min_score * n_regions ≤ 1`) |
+| `min_score` | Soft floor for routing weights (≥ 0; `min_score ≤ 1/n_regions` in Float32) |
 | `epsilon` | Numerical stability floor (> 0) |
 
 Constructor:
@@ -141,7 +141,7 @@ RoutingConfig()  # defaults match module-level ALPHA..EPSILON constants
 RoutingConfig(alpha, beta, gamma, ema_decay, min_score, epsilon)
 ```
 
-All values must be finite. The `min_score * n_regions ≤ 1` constraint is validated by `RegionRouter` constructor.
+All values must be finite. `min_score ≤ 1/n_regions` (Float32 uniform weight) is validated by `RegionRouter` / `config=` assignment.
 
 ---
 
@@ -159,13 +159,16 @@ update_routing!(router::RegionRouter, regions::Vector{ActivityRegion}) -> nothin
 
 | Output (in-place on `router`) | Contract |
 |-------------------------------|----------|
-| `router.routing_weights` | length `n_regions`, **non-negative** entries **≥ `router.config.min_score`** (positive if `min_score > 0`), **sum ≈ 1** (final weights are normalized to maintain the floor; `router.config.min_score * n_regions ≤ 1` ensures this is feasible) |
+| `router.routing_weights` | length `n_regions`, **non-negative** entries **≥ `router.config.min_score`** (positive when `min_score > 0`; zeros possible if `min_score = 0` and Float32 softmax underflows), **sum ≈ 1** (floor-preserving renorm; `min_score ≤ 1/n_regions` in Float32) |
 | `router.surprise`, `router.spike_density`, … | updated diagnostics; readable after the call |
 | return value | `nothing` (consume `routing_weights`, not a return vector) |
 
 **Legacy alias:** `update_relevance! === update_routing!`.
 
-This freeze does **not** change routing math (α/β/γ, EMA decay, inhibition, softmax).
+**Routing math notes (this freeze is not bit-identical to older heads):**
+- `prev_routing_weights` snapshots pre-update weights so default nonzero `gamma` affects ticks after the first
+- post-softmax min-score uses floor-preserving renorm (not clamp-then-`sum+ε` alone)
+- `epsilon` remains the shared stability floor for surprise and the first softmax divide
 
 ---
 

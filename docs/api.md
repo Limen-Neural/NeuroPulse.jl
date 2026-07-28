@@ -19,7 +19,6 @@ routing_diagnostics
 adapt_leak!
 save_state
 load_state!
-load_state
 ```
 
 Legacy aliases (same objects):
@@ -29,6 +28,7 @@ LobeState          # === ActivityRegion
 NeroOrchestrator   # === RegionRouter
 update_relevance!  # === update_routing!
 nero_diagnostics   # === routing_diagnostics
+load_state         # === load_state! (mutating compatibility alias)
 ```
 
 ## `ActivityRegion` / `LobeState`
@@ -78,7 +78,7 @@ Notes:
 - if `inhibition_matrix` is `nothing`, a default matrix is built for `n_regions`
   (`INHIBIT[1:n,1:n]` when `n ≤ 4`; scaled lateral matrix when `n > 4`); a custom
   matrix must be `n_regions × n_regions`
-- `config.min_score * n_regions` must be `≤ 1` (constructor rejects impossible floors)
+- `config.min_score` must be `≤ 1/n_regions` in Float32 (constructor rejects impossible floors)
 
 ## `RoutingConfig`
 

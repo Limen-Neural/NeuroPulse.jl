@@ -72,6 +72,38 @@ using TemporalFocus
         r.config = RoutingConfig(A, B, G, D, M, E)  # valid
         @test r.config.min_score == M
         @test_throws ArgumentError (r.config = "not-a-config")
+        # Float32 product can round to 1 while floor is still > 1/n
+        n41 = 41
+        too_high = nextfloat(1.0f0 / Float32(n41))
+        @test_throws ArgumentError RegionRouter(
+            n_regions = n41,
+            n_out = 4,
+            config = RoutingConfig(A, B, G, D, too_high, E),
+        )
+    end
+
+    @testset "update_routing! rejects non-finite derived scores" begin
+        # ema_decay=0 keeps EMA at 0; tiny epsilon + large readout can overflow surprise
+        cfg = RoutingConfig(
+            TemporalFocus.ALPHA,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            0.0f0,
+            TemporalFocus.MIN_SCORE,
+            floatmin(Float32),
+        )
+        router = RegionRouter(
+            n_regions = 2,
+            n_out = 4,
+            region_names = ["A", "B"],
+            config = cfg,
+            inhibition_matrix = zeros(Float32, 2, 2),
+        )
+        regions = [
+            ActivityRegion(1.0f0, fill(1.0f32, 4)),
+            ActivityRegion(0.0f0, zeros(Float32, 4)),
+        ]
+        @test_throws ArgumentError update_routing!(router, regions)
     end
 
     @testset "min_score saturating floor uses uniform renorm" begin
@@ -86,10 +118,7 @@ using TemporalFocus
             0.25f0,  # 0.25 * 4 == 1
             TemporalFocus.EPSILON,
         )
-        router = RegionRouter(
-            config = cfg,
-            inhibition_matrix = zeros(Float32, 4, 4),
-        )
+        router = RegionRouter(config = cfg, inhibition_matrix = zeros(Float32, 4, 4))
         regions = [ActivityRegion(1.0f0, ones(Float32, 16)) for _ = 1:4]
         update_routing!(router, regions)
         @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-5)
