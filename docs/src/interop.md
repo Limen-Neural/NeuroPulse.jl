@@ -129,7 +129,7 @@ end
 |-------|----------|
 | `alpha` | Weight for spike density contribution (≥ 0) |
 | `beta` | Weight for manifold surprise contribution (≥ 0) |
-| `gamma` | Weight for readout EMA momentum (≥ 0) |
+| `gamma` | Weight for routing-weight momentum `|w_t - w_{t-1}|` (≥ 0); readout movement is `surprise` / β |
 | `ema_decay` | EMA smoothing factor in **`[0, 1]`** |
 | `min_score` | Soft floor for routing weights (≥ 0; `min_score ≤ 1/n_regions` in Float32) |
 | `epsilon` | Numerical stability floor (> 0) |

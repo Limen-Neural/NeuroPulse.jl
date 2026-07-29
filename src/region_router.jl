@@ -288,36 +288,35 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     n = router.n_regions
     cfg = router.config
     _validate_floor_feasibility(cfg.min_score, n)
-    router.tick_count += 1
-    raw = router.prev_relevance   # reuse buffer (prev no longer needed this tick)
+    raw = router.prev_relevance   # staging buffer; committed after finiteness checks
+    d = cfg.ema_decay
 
-    # ── Stage 1-3: per-region signal collection ───────────────────────────
+    # ── Stage 1-3: score collection WITHOUT committing EMA / weights ──────
+    # Surprise uses the same post-update formula as before, but `readout_ema`
+    # is only written after every region's scores are finite (retry-safe).
     for i = 1:n
         region = regions[i]
 
         spike_rate = region.last_spike_rate
-        isfinite(spike_rate) || throw(
-            ArgumentError(
-                "non-finite spike rate for region $i (got $spike_rate)",
-            ),
-        )
+        isfinite(spike_rate) ||
+            throw(ArgumentError("non-finite spike rate for region $i (got $spike_rate)"))
 
-        copyto!(router.scratch, region.output)
-        for val in router.scratch
-            isfinite(val) || throw(
-                ArgumentError(
-                    "non-finite readout value for region $i (got $val)",
-                ),
-            )
+        out = region.output
+        for val in out
+            isfinite(val) ||
+                throw(ArgumentError("non-finite readout value for region $i (got $val)"))
         end
 
         @views ema_row = router.readout_ema[i, :]
-        @. ema_row = (1.0f0 - cfg.ema_decay) * ema_row + cfg.ema_decay * router.scratch
-
-        router.scratch .-= ema_row
-        delta_norm = norm(router.scratch)
-        ema_norm = norm(ema_row) + cfg.epsilon
-        surprise = delta_norm / ema_norm
+        delta_sq = 0.0f0
+        ema_new_sq = 0.0f0
+        for j = 1:length(out)
+            new_e = (1.0f0 - d) * ema_row[j] + d * out[j]
+            del = out[j] - new_e
+            delta_sq += del * del
+            ema_new_sq += new_e * new_e
+        end
+        surprise = sqrt(delta_sq) / (sqrt(ema_new_sq) + cfg.epsilon)
         isfinite(surprise) || throw(
             ArgumentError(
                 "non-finite surprise for region $i (got $surprise); " *
@@ -326,11 +325,7 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         )
 
         momentum = abs(router.routing_weights[i] - router.prev_routing_weights[i])
-
-        raw_score =
-            cfg.alpha * spike_rate +
-            cfg.beta * surprise +
-            cfg.gamma * momentum
+        raw_score = cfg.alpha * spike_rate + cfg.beta * surprise + cfg.gamma * momentum
         isfinite(raw_score) || throw(
             ArgumentError(
                 "non-finite raw score for region $i (got $raw_score); " *
@@ -343,13 +338,13 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         raw[i] = raw_score
     end
 
-    # Snapshot pre-update weights before overwriting `routing_weights` so the next
-    # tick's momentum term is |w_t - w_{t-1}| (makes `cfg.gamma` effective).
-    copyto!(router.prev_routing_weights, router.routing_weights)
+    # Commit EMA only after all per-region scores validated.
+    for i = 1:n
+        @views ema_row = router.readout_ema[i, :]
+        @. ema_row = (1.0f0 - d) * ema_row + d * regions[i].output
+    end
 
-    # ── Stage 4: cross-region graph inhibition ────────────────────────────
-    # Reuses `routing_weights` as the inhibited / softmax workspace (in-place).
-    inhibited = router.routing_weights
+    # ── Stage 4: validate inhibition (no weight mutation yet) ─────────────
     for dst = 1:n
         inh_sum = 0.0f0
         for src = 1:n
@@ -370,7 +365,19 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
                 "check inhibition_matrix magnitudes",
             ),
         )
-        inhibited[dst] = max(inhibited_raw, cfg.min_score)
+    end
+
+    # Snapshot pre-update weights, then write inhibited scores into routing_weights.
+    copyto!(router.prev_routing_weights, router.routing_weights)
+    inhibited = router.routing_weights
+    for dst = 1:n
+        inh_sum = 0.0f0
+        for src = 1:n
+            if router.adjacency_matrix[src, dst] > 0.0f0
+                inh_sum += router.inhibition_matrix[src, dst] * raw[src]
+            end
+        end
+        inhibited[dst] = max(raw[dst] - inh_sum, cfg.min_score)
     end
 
     # ── Stage 5: softmax normalisation ────────────────────────────────────
@@ -404,6 +411,7 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         end
     end
 
+    router.tick_count += 1
     return nothing
 end
 
