@@ -292,8 +292,9 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     d = cfg.ema_decay
 
     # ── Stage 1-3: score collection WITHOUT committing EMA / weights ──────
-    # Surprise uses the same post-update formula as before, but `readout_ema`
-    # is only written after every region's scores are finite (retry-safe).
+    # Surprise uses the post-update EMA formula, but `readout_ema` is only written
+    # after inhibition finiteness checks pass (retry-safe for matrix fixes).
+    # Norms accumulate in Float64 so large finite Float32 readouts do not overflow.
     for i = 1:n
         region = regions[i]
 
@@ -302,21 +303,29 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
             throw(ArgumentError("non-finite spike rate for region $i (got $spike_rate)"))
 
         out = region.output
+        length(out) == router.n_out || throw(
+            ArgumentError(
+                "region $i output length $(length(out)) does not match n_out=$(router.n_out)",
+            ),
+        )
         for val in out
             isfinite(val) ||
                 throw(ArgumentError("non-finite readout value for region $i (got $val)"))
         end
 
         @views ema_row = router.readout_ema[i, :]
-        delta_sq = 0.0f0
-        ema_new_sq = 0.0f0
-        for j = 1:length(out)
-            new_e = (1.0f0 - d) * ema_row[j] + d * out[j]
-            del = out[j] - new_e
+        # Stage ema_new into scratch; use overflow-safe BLAS norm for delta/ema_new.
+        @. router.scratch = (1.0f0 - d) * ema_row + d * out
+        # delta = out - ema_new into... reuse via temporary Float64 norms:
+        delta_sq = 0.0
+        ema_new_sq = 0.0
+        @inbounds for j = 1:router.n_out
+            new_e = Float64(router.scratch[j])
+            del = Float64(out[j]) - new_e
             delta_sq += del * del
             ema_new_sq += new_e * new_e
         end
-        surprise = sqrt(delta_sq) / (sqrt(ema_new_sq) + cfg.epsilon)
+        surprise = Float32(sqrt(delta_sq) / (sqrt(ema_new_sq) + Float64(cfg.epsilon)))
         isfinite(surprise) || throw(
             ArgumentError(
                 "non-finite surprise for region $i (got $surprise); " *
@@ -338,13 +347,7 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
         raw[i] = raw_score
     end
 
-    # Commit EMA only after all per-region scores validated.
-    for i = 1:n
-        @views ema_row = router.readout_ema[i, :]
-        @. ema_row = (1.0f0 - d) * ema_row + d * regions[i].output
-    end
-
-    # ── Stage 4: validate inhibition (no weight mutation yet) ─────────────
+    # ── Stage 4: validate inhibition (no EMA / weight mutation yet) ───────
     for dst = 1:n
         inh_sum = 0.0f0
         for src = 1:n
@@ -365,6 +368,12 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
                 "check inhibition_matrix magnitudes",
             ),
         )
+    end
+
+    # Commit EMA only after inhibition validation (caller can fix matrix and retry).
+    for i = 1:n
+        @views ema_row = router.readout_ema[i, :]
+        @. ema_row = (1.0f0 - d) * ema_row + d * regions[i].output
     end
 
     # Snapshot pre-update weights, then write inhibited scores into routing_weights.

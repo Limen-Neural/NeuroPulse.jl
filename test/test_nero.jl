@@ -758,6 +758,23 @@ using TemporalFocus
         @test_throws ArgumentError load_state!(router, bad_adj)
     end
 
+
+    @testset "update_routing! rejects output length mismatch" begin
+        router = RegionRouter(n_out = 8)
+        regions = [ActivityRegion(0.5f0, ones(Float32, 4)) for _ = 1:4]  # wrong width
+        @test_throws ArgumentError update_routing!(router, regions)
+    end
+
+    @testset "update_routing! accepts large finite readouts" begin
+        # Float32 sum-of-squares would overflow ~1e20; Float64 staging must accept.
+        router = RegionRouter(n_out = 4, inhibition_matrix = zeros(Float32, 4, 4))
+        big = fill(1.0f20, 4)
+        regions = [ActivityRegion(0.5f0, copy(big)) for _ = 1:4]
+        update_routing!(router, regions)
+        @test all(isfinite, router.routing_weights)
+        @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-3)
+    end
+
     # ── adapt_leak! (LIM-233 / GH#27) ──────────────────────────────────────────
 
     @testset "adapt_leak! default stress percent scale [0, 100]" begin
