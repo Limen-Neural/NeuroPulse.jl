@@ -295,40 +295,52 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
     for i = 1:n
         region = regions[i]
 
-        # 1. Spike density
-        router.spike_density[i] = region.last_spike_rate
+        spike_rate = region.last_spike_rate
+        isfinite(spike_rate) || throw(
+            ArgumentError(
+                "non-finite spike rate for region $i (got $spike_rate)",
+            ),
+        )
 
-        # 2. Readout EMA update (in-place)
         copyto!(router.scratch, region.output)
-        @views ema_row = router.readout_ema[i, :]
-        ema_row .= (1.0f0 - cfg.ema_decay) .* ema_row .+ cfg.ema_decay .* router.scratch
+        for val in router.scratch
+            isfinite(val) || throw(
+                ArgumentError(
+                    "non-finite readout value for region $i (got $val)",
+                ),
+            )
+        end
 
-        # 3. Manifold surprise: |new - ema| / (|ema| + ε)
-        router.scratch .-= ema_row      # scratch ← delta
+        @views ema_row = router.readout_ema[i, :]
+        @. ema_row = (1.0f0 - cfg.ema_decay) * ema_row + cfg.ema_decay * router.scratch
+
+        router.scratch .-= ema_row
         delta_norm = norm(router.scratch)
         ema_norm = norm(ema_row) + cfg.epsilon
-        router.surprise[i] = delta_norm / ema_norm
-        isfinite(router.surprise[i]) || throw(
+        surprise = delta_norm / ema_norm
+        isfinite(surprise) || throw(
             ArgumentError(
-                "non-finite surprise for region $i (got $(router.surprise[i])); " *
+                "non-finite surprise for region $i (got $surprise); " *
                 "check ema_decay/epsilon/readout scale",
             ),
         )
 
-        # 4. Momentum
         momentum = abs(router.routing_weights[i] - router.prev_routing_weights[i])
 
-        # 5. Raw score
-        raw[i] =
-            cfg.alpha * router.spike_density[i] +
-            cfg.beta * router.surprise[i] +
+        raw_score =
+            cfg.alpha * spike_rate +
+            cfg.beta * surprise +
             cfg.gamma * momentum
-        isfinite(raw[i]) || throw(
+        isfinite(raw_score) || throw(
             ArgumentError(
-                "non-finite raw score for region $i (got $(raw[i])); " *
+                "non-finite raw score for region $i (got $raw_score); " *
                 "check alpha/beta/gamma magnitudes",
             ),
         )
+
+        router.spike_density[i] = spike_rate
+        router.surprise[i] = surprise
+        raw[i] = raw_score
     end
 
     # Snapshot pre-update weights before overwriting `routing_weights` so the next
@@ -345,12 +357,20 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
                 inh_sum += router.inhibition_matrix[src, dst] * raw[src]
             end
         end
-        inhibited[dst] = max(raw[dst] - inh_sum, cfg.min_score)
-        isfinite(inhibited[dst]) || throw(
+        isfinite(inh_sum) || throw(
             ArgumentError(
-                "non-finite inhibited score for region $dst (got $(inhibited[dst]))",
+                "non-finite inhibition sum for region $dst (got $inh_sum); " *
+                "check inhibition_matrix magnitudes",
             ),
         )
+        inhibited_raw = raw[dst] - inh_sum
+        isfinite(inhibited_raw) || throw(
+            ArgumentError(
+                "non-finite inhibited score for region $dst (raw=$inhibited_raw); " *
+                "check inhibition_matrix magnitudes",
+            ),
+        )
+        inhibited[dst] = max(inhibited_raw, cfg.min_score)
     end
 
     # ── Stage 5: softmax normalisation ────────────────────────────────────
