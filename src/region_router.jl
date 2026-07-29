@@ -72,6 +72,78 @@ function default_inhibition_matrix(n_regions::Int)::Matrix{Float32}
     return M
 end
 
+
+# ── Per-router tuning ─────────────────────────────────────────────────────────
+
+"""
+    RoutingConfig
+
+Per-router scoring knobs. Defaults match the module-level ALPHA..EPSILON constants.
+
+Note: the snapshot-order change in LIM-230 activates `gamma` (momentum term) by
+capturing pre-update weights before the current tick overwrites them. Previously,
+`gamma` had no effect since the snapshot occurred after the update.
+
+All six fields must be finite. `alpha`/`beta`/`gamma`/`min_score` are non-negative,
+`ema_decay ∈ [0, 1]`, and `epsilon > 0`.
+
+`min_score` is also checked against router size in [`RegionRouter`](@ref):
+`min_score ≤ 1/n_regions` in Float32 so a post-normalization floor is feasible.
+"""
+struct RoutingConfig
+    alpha::Float32
+    beta::Float32
+    gamma::Float32
+    ema_decay::Float32
+    min_score::Float32
+    epsilon::Float32
+
+    function RoutingConfig(alpha, beta, gamma, ema_decay, min_score, epsilon)
+        a = Float32(alpha)
+        b = Float32(beta)
+        g = Float32(gamma)
+        d = Float32(ema_decay)
+        m = Float32(min_score)
+        e = Float32(epsilon)
+        for (name, v) in (
+            (:alpha, a),
+            (:beta, b),
+            (:gamma, g),
+            (:ema_decay, d),
+            (:min_score, m),
+            (:epsilon, e),
+        )
+            isfinite(v) || throw(ArgumentError("$name must be finite, got $v"))
+        end
+        a >= 0.0f0 || throw(ArgumentError("alpha must be non-negative, got $a"))
+        b >= 0.0f0 || throw(ArgumentError("beta must be non-negative, got $b"))
+        g >= 0.0f0 || throw(ArgumentError("gamma must be non-negative, got $g"))
+        0.0f0 <= d <= 1.0f0 || throw(ArgumentError("ema_decay must be in [0,1], got $d"))
+        m >= 0.0f0 || throw(ArgumentError("min_score must be non-negative, got $m"))
+        e > 0.0f0 || throw(
+            ArgumentError("epsilon must be positive to prevent division by zero, got $e"),
+        )
+        new(a, b, g, d, m, e)
+    end
+end
+RoutingConfig() = RoutingConfig(ALPHA, BETA, GAMMA, EMA_DECAY, MIN_SCORE, EPSILON)
+
+function _validate_floor_feasibility(min_score::Float32, n_regions::Int)
+    n_regions > 0 || throw(ArgumentError("n_regions must be positive, got $n_regions"))
+    # Compare against the representable uniform weight, not `min_score * n` (which can
+    # round to 1.0f0 while min_score is still strictly above 1/n in Float32).
+    uniform = 1.0f0 / Float32(n_regions)
+    if min_score > uniform
+        throw(
+            ArgumentError(
+                "min_score ($min_score) exceeds representable uniform weight " *
+                "1/n_regions ($uniform) for n_regions=$n_regions",
+            ),
+        )
+    end
+    return nothing
+end
+
 # ── Router State ──────────────────────────────────────────────────────────────
 
 """
@@ -95,6 +167,7 @@ Fields:
   surprise           — manifold surprise score per region
   scratch            — reusable scratch buffer (n_out elements)
   tick_count         — global tick counter
+  config             — per-router scoring knobs (`RoutingConfig`)
 """
 mutable struct RegionRouter
     n_regions::Int
@@ -110,11 +183,25 @@ mutable struct RegionRouter
     surprise::Vector{Float32}
     scratch::Vector{Float32}
     tick_count::Int64
+    config::RoutingConfig
+end
+
+"""
+Validate `config` against this router's `n_regions` when replacing `router.config`.
+"""
+function Base.setproperty!(router::RegionRouter, name::Symbol, value)
+    if name === :config
+        value isa RoutingConfig ||
+            throw(ArgumentError("config must be a RoutingConfig, got $(typeof(value))"))
+        _validate_floor_feasibility(value.min_score, getfield(router, :n_regions))
+        return setfield!(router, :config, value)
+    end
+    return invoke(setproperty!, Tuple{Any,Symbol,Any}, router, name, value)
 end
 
 """
     RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES,
-                   inhibition_matrix=nothing) -> RegionRouter
+                   inhibition_matrix=nothing, config=RoutingConfig()) -> RegionRouter
 
 Build the static region graph and pre-allocate all working buffers.
 
@@ -127,7 +214,9 @@ function RegionRouter(;
     n_out::Int = 16,
     region_names::Vector{String} = DEFAULT_REGION_NAMES,
     inhibition_matrix::Union{Nothing,AbstractMatrix} = nothing,
+    config::RoutingConfig = RoutingConfig(),
 )
+    _validate_floor_feasibility(config.min_score, n_regions)
 
     # Auto-generate region names if not enough provided
     if length(region_names) < n_regions
@@ -168,6 +257,7 @@ function RegionRouter(;
         zeros(Float32, n_regions),
         zeros(Float32, n_out),
         Int64(0),
+        config,
     )
 end
 
@@ -195,37 +285,99 @@ Cross-region inhibition:
 Softmax normalisation → sum(relevance) = 1.0, each ≥ MIN_SCORE.
 """
 function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
-    router.tick_count += 1
     n = router.n_regions
-    raw = router.prev_relevance   # reuse buffer (prev no longer needed this tick)
+    cfg = router.config
+    _validate_floor_feasibility(cfg.min_score, n)
+    raw = router.prev_relevance   # staging buffer; committed after finiteness checks
+    d = cfg.ema_decay
 
-    # ── Stage 1-3: per-region signal collection ───────────────────────────
+    # ── Stage 1-3: score collection WITHOUT committing EMA / weights ──────
+    # Surprise uses the post-update EMA formula, but `readout_ema` is only written
+    # after inhibition finiteness checks pass (retry-safe for matrix fixes).
+    # Norms accumulate in Float64 so large finite Float32 readouts do not overflow.
     for i = 1:n
         region = regions[i]
 
-        # 1. Spike density
-        router.spike_density[i] = region.last_spike_rate
+        spike_rate = region.last_spike_rate
+        isfinite(spike_rate) ||
+            throw(ArgumentError("non-finite spike rate for region $i (got $spike_rate)"))
 
-        # 2. Readout EMA update (in-place)
-        copyto!(router.scratch, region.output)
+        out = region.output
+        length(out) == router.n_out || throw(
+            ArgumentError(
+                "region $i output length $(length(out)) does not match n_out=$(router.n_out)",
+            ),
+        )
+        for val in out
+            isfinite(val) ||
+                throw(ArgumentError("non-finite readout value for region $i (got $val)"))
+        end
+
         @views ema_row = router.readout_ema[i, :]
-        ema_row .= (1.0f0 - EMA_DECAY) .* ema_row .+ EMA_DECAY .* router.scratch
+        # Stage ema_new into scratch; use overflow-safe BLAS norm for delta/ema_new.
+        @. router.scratch = (1.0f0 - d) * ema_row + d * out
+        # delta = out - ema_new into... reuse via temporary Float64 norms:
+        delta_sq = 0.0
+        ema_new_sq = 0.0
+        @inbounds for j = 1:router.n_out
+            new_e = Float64(router.scratch[j])
+            del = Float64(out[j]) - new_e
+            delta_sq += del * del
+            ema_new_sq += new_e * new_e
+        end
+        surprise = Float32(sqrt(delta_sq) / (sqrt(ema_new_sq) + Float64(cfg.epsilon)))
+        isfinite(surprise) || throw(
+            ArgumentError(
+                "non-finite surprise for region $i (got $surprise); " *
+                "check ema_decay/epsilon/readout scale",
+            ),
+        )
 
-        # 3. Manifold surprise: |new - ema| / (|ema| + ε)
-        router.scratch .-= ema_row      # scratch ← delta
-        delta_norm = norm(router.scratch)
-        ema_norm = norm(ema_row) + EPSILON
-        router.surprise[i] = delta_norm / ema_norm
-
-        # 4. Momentum
         momentum = abs(router.routing_weights[i] - router.prev_routing_weights[i])
+        raw_score = cfg.alpha * spike_rate + cfg.beta * surprise + cfg.gamma * momentum
+        isfinite(raw_score) || throw(
+            ArgumentError(
+                "non-finite raw score for region $i (got $raw_score); " *
+                "check alpha/beta/gamma magnitudes",
+            ),
+        )
 
-        # 5. Raw score
-        raw[i] =
-            ALPHA * router.spike_density[i] + BETA * router.surprise[i] + GAMMA * momentum
+        router.spike_density[i] = spike_rate
+        router.surprise[i] = surprise
+        raw[i] = raw_score
     end
 
-    # ── Stage 4: cross-region graph inhibition ────────────────────────────
+    # ── Stage 4: validate inhibition (no EMA / weight mutation yet) ───────
+    for dst = 1:n
+        inh_sum = 0.0f0
+        for src = 1:n
+            if router.adjacency_matrix[src, dst] > 0.0f0
+                inh_sum += router.inhibition_matrix[src, dst] * raw[src]
+            end
+        end
+        isfinite(inh_sum) || throw(
+            ArgumentError(
+                "non-finite inhibition sum for region $dst (got $inh_sum); " *
+                "check inhibition_matrix magnitudes",
+            ),
+        )
+        inhibited_raw = raw[dst] - inh_sum
+        isfinite(inhibited_raw) || throw(
+            ArgumentError(
+                "non-finite inhibited score for region $dst (raw=$inhibited_raw); " *
+                "check inhibition_matrix magnitudes",
+            ),
+        )
+    end
+
+    # Commit EMA only after inhibition validation (caller can fix matrix and retry).
+    for i = 1:n
+        @views ema_row = router.readout_ema[i, :]
+        @. ema_row = (1.0f0 - d) * ema_row + d * regions[i].output
+    end
+
+    # Snapshot pre-update weights, then write inhibited scores into routing_weights.
+    copyto!(router.prev_routing_weights, router.routing_weights)
     inhibited = router.routing_weights
     for dst = 1:n
         inh_sum = 0.0f0
@@ -234,28 +386,41 @@ function update_routing!(router::RegionRouter, regions::Vector{ActivityRegion})
                 inh_sum += router.inhibition_matrix[src, dst] * raw[src]
             end
         end
-        inhibited[dst] = max(raw[dst] - inh_sum, MIN_SCORE)
+        inhibited[dst] = max(raw[dst] - inh_sum, cfg.min_score)
     end
 
     # ── Stage 5: softmax normalisation ────────────────────────────────────
+    # `epsilon` is the shared stability floor (surprise denom + softmax normalizer).
     max_val = maximum(inhibited)
     s = 0.0f0
     for i = 1:n
         inhibited[i] = exp(inhibited[i] - max_val)
         s += inhibited[i]
     end
-    inhibited ./= (s + EPSILON)
+    inhibited ./= (s + cfg.epsilon)
 
     for i = 1:n
-        if inhibited[i] < MIN_SCORE
-            inhibited[i] = MIN_SCORE
+        if inhibited[i] < cfg.min_score
+            inhibited[i] = cfg.min_score
         end
     end
-    inhibited ./= (sum(inhibited) + EPSILON)
 
-    # Snapshot current weights for next tick's momentum calculation
-    copyto!(router.prev_routing_weights, router.routing_weights)
+    total = sum(inhibited)
+    floor_mass = Float32(n) * cfg.min_score
+    excess = total - floor_mass
+    if excess > cfg.epsilon
+        for i = 1:n
+            inhibited[i] =
+                cfg.min_score +
+                (inhibited[i] - cfg.min_score) * (1.0f0 - floor_mass) / excess
+        end
+    else
+        for i = 1:n
+            inhibited[i] = 1.0f0 / Float32(n)
+        end
+    end
 
+    router.tick_count += 1
     return nothing
 end
 
@@ -269,9 +434,11 @@ Copy mutable routing state into a serializable `NamedTuple` for checkpointing.
 Includes `n_regions` and `n_out` for load-time validation, plus copies of
 `region_names`, `adjacency_matrix`, and `inhibition_matrix` so loads can reject
 routers whose labels/graph/inhibition config does not match the experiment that
-produced the snapshot. Mutable array fields are independent copies (`copy`) so
-later `update_routing!` calls do not mutate the snapshot. Element types are
-immutable (`Float32` / `String`), so `copy` is sufficient.
+produced the snapshot. Also records `config::RoutingConfig` so scoring knobs
+round-trip with the checkpoint. Mutable array fields are independent copies
+(`copy`) so later `update_routing!` calls do not mutate the snapshot. Element
+types are immutable (`Float32` / `String` / `RoutingConfig`), so `copy` is
+sufficient for arrays.
 """
 function save_state(router::RegionRouter)
     return (
@@ -280,6 +447,7 @@ function save_state(router::RegionRouter)
         region_names = copy(router.region_names),
         adjacency_matrix = copy(router.adjacency_matrix),
         inhibition_matrix = copy(router.inhibition_matrix),
+        config = router.config,
         routing_weights = copy(router.routing_weights),
         readout_ema = copy(router.readout_ema),
         spike_density = copy(router.spike_density),
@@ -304,6 +472,10 @@ Throws `ArgumentError` if:
 
 Structural fields are validated but not restored — the target router must
 already be configured for the same experiment labels/graph/inhibition.
+
+When the snapshot includes `config` (always written by current `save_state`),
+it is restored onto the target router so scoring knobs match the checkpointed
+experiment. Older snapshots without `config` leave the target's config unchanged.
 """
 function load_state!(router::RegionRouter, snap)
     n = router.n_regions
@@ -355,6 +527,15 @@ function load_state!(router::RegionRouter, snap)
     _check_vec_len(snap.surprise, n, :surprise)
     if hasproperty(snap, :scratch)
         _check_vec_len(snap.scratch, n_out, :scratch)
+    end
+
+    if hasproperty(snap, :config)
+        cfg = snap.config
+        cfg isa RoutingConfig || throw(
+            ArgumentError("snapshot config must be a RoutingConfig, got $(typeof(cfg))"),
+        )
+        _validate_floor_feasibility(cfg.min_score, n)
+        router.config = cfg
     end
 
     copyto!(router.routing_weights, snap.routing_weights)

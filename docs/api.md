@@ -13,9 +13,12 @@ Preferred (generic) names:
 ```julia
 ActivityRegion
 RegionRouter
+RoutingConfig
 update_routing!
 routing_diagnostics
 adapt_leak!
+save_state
+load_state!
 ```
 
 Legacy aliases (same objects):
@@ -25,6 +28,7 @@ LobeState          # === ActivityRegion
 NeroOrchestrator   # === RegionRouter
 update_relevance!  # === update_routing!
 nero_diagnostics   # === routing_diagnostics
+load_state         # === load_state! (mutating compatibility alias)
 ```
 
 ## `ActivityRegion` / `LobeState`
@@ -49,7 +53,7 @@ Notes:
 
 ```julia
 RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES,
-               inhibition_matrix=nothing)
+               inhibition_matrix=nothing, config=RoutingConfig())
 ```
 
 Mutable routing state. `NeroOrchestrator` is a constant alias of `RegionRouter`
@@ -58,6 +62,7 @@ Mutable routing state. `NeroOrchestrator` is a constant alias of `RegionRouter`
 Important fields:
 - `n_regions`, `n_out`
 - `inhibition_matrix` — `n_regions × n_regions` lateral inhibition weights
+- `config` — per-router scoring knobs (`RoutingConfig`)
 - `routing_weights`
 - `readout_ema`
 - `spike_density`
@@ -73,6 +78,18 @@ Notes:
 - if `inhibition_matrix` is `nothing`, a default matrix is built for `n_regions`
   (`INHIBIT[1:n,1:n]` when `n ≤ 4`; scaled lateral matrix when `n > 4`); a custom
   matrix must be `n_regions × n_regions`
+- `config.min_score` must be `≤ 1/n_regions` in Float32 (constructor rejects impossible floors)
+
+## `RoutingConfig`
+
+```julia
+RoutingConfig()
+RoutingConfig(alpha, beta, gamma, ema_decay, min_score, epsilon)
+```
+
+Per-router scoring knobs used by `update_routing!`. Defaults match the module-level
+`ALPHA`…`EPSILON` constants. All values must be finite; `alpha`/`beta`/`gamma`/
+`min_score ≥ 0`, `ema_decay ∈ [0,1]`, `epsilon > 0`.
 
 ## `update_routing!` / `update_relevance!`
 
@@ -134,7 +151,7 @@ Notes:
 These are current limitations, not hidden behavior:
 
 - the package name is generalized (`TemporalFocus`); some exported symbols still carry NERO naming
-- scoring constants (α/β/γ, EMA decay, floors) remain module-level globals (no `RoutingConfig` on this branch)
+- module-level `ALPHA`…`EPSILON` remain as defaults / `NERO_*` aliases; prefer `RoutingConfig` for per-router tuning
 - defaults still imply a four-component example layout for names / historical `INHIBIT`
 - inhibition is configurable via `RegionRouter(; inhibition_matrix=...)` (see field notes above)
 - there is not yet a first-class generic `ComponentState` / `RouterState` naming pass

@@ -32,7 +32,8 @@ include("region_router.jl")
 # ── Exports ───────────────────────────────────────────────────────────────────
 
 # Generic API (preferred)
-export ActivityRegion, RegionRouter, update_routing!, routing_diagnostics, adapt_leak!
+export ActivityRegion,
+    RegionRouter, RoutingConfig, update_routing!, routing_diagnostics, adapt_leak!
 export save_state, load_state!, load_state
 
 # Backward-compatible type aliases

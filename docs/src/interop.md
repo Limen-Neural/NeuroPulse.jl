@@ -22,6 +22,7 @@ outputs. It describes what the package **owns** and what it **does not**.
 |----------------|------|
 | `ActivityRegion` | Compact per-region summary for one tick |
 | `RegionRouter` | Mutable routing state (pre-allocated buffers) |
+| `RoutingConfig` | Per-router scoring knobs (α/β/γ, EMA decay, min_score, epsilon) |
 | `update_routing!` | In-place per-tick relevance update |
 | `routing_diagnostics` | Lightweight string summary for logs |
 | `adapt_leak!` | Optional stress → leak helper (not core routing) |
@@ -86,24 +87,61 @@ Mutable routing state. Pre-allocated at construction; the hot path of
 | `routing_weights` | `Vector{Float32}` length `n_regions` | **Primary output**; sums to **~1** after each tick |
 | `readout_ema` | `Matrix{Float32}` `n_regions × n_out` | Per-region EMA of readouts |
 | `spike_density` | `Vector{Float32}` length `n_regions` | Last tick’s rates (copy of inputs) |
-| `prev_routing_weights` | `Vector{Float32}` length `n_regions` | Momentum buffer; after a normal `update_routing!` call it equals the just-written `routing_weights` (not a preserved prior-tick snapshot for external readers) |
+| `prev_routing_weights` | `Vector{Float32}` length `n_regions` | Prior-tick `routing_weights` snapshot used for the γ momentum term; after `update_routing!` holds the pre-update weights (not equal to the just-written `routing_weights` once weights change) |
 | `prev_relevance` | `Vector{Float32}` length `n_regions` | Scratch / last raw scores |
 | `surprise` | `Vector{Float32}` length `n_regions` | Manifold surprise per region |
 | `scratch` | `Vector{Float32}` length `n_out` | Hot-path scratch buffer |
 | `tick_count` | `Int64` | Global tick counter |
+| `config` | `RoutingConfig` | Per-router α/β/γ, EMA decay, min_score, epsilon |
 
 Constructor:
 
 ```julia
 RegionRouter(; n_regions=4, n_out=16, region_names=DEFAULT_REGION_NAMES,
-               inhibition_matrix=nothing)
+               inhibition_matrix=nothing, config=RoutingConfig())
 ```
 
 Initial `routing_weights` are uniform (`1 / n_regions`). When `inhibition_matrix`
 is `nothing`, a default matrix is generated as described above; otherwise the
-provided matrix must be `n_regions × n_regions`.
+provided matrix must be `n_regions × n_regions`. `config.min_score` must be
+`≤ 1/n_regions` in Float32 (compared to the representable uniform weight).
 
 **Legacy alias:** `NeroOrchestrator === RegionRouter`.
+
+---
+
+### `RoutingConfig`
+
+Per-router scoring knobs used by `update_routing!`.
+
+```julia
+struct RoutingConfig
+    alpha::Float32
+    beta::Float32
+    gamma::Float32
+    ema_decay::Float32
+    min_score::Float32
+    epsilon::Float32
+end
+```
+
+| Field | Contract |
+|-------|----------|
+| `alpha` | Weight for spike density contribution (≥ 0) |
+| `beta` | Weight for manifold surprise contribution (≥ 0) |
+| `gamma` | Weight for prior routing-weight momentum `|w_{t-1} - w_{t-2}|` when producing `w_t` (≥ 0); readout movement is `surprise` / β |
+| `ema_decay` | EMA smoothing factor in **`[0, 1]`** |
+| `min_score` | Soft floor for routing weights (≥ 0; `min_score ≤ 1/n_regions` in Float32) |
+| `epsilon` | Numerical stability floor (> 0) |
+
+Constructor:
+
+```julia
+RoutingConfig()  # defaults match module-level ALPHA..EPSILON constants
+RoutingConfig(alpha, beta, gamma, ema_decay, min_score, epsilon)
+```
+
+All values must be finite. `min_score ≤ 1/n_regions` (Float32 uniform weight) is validated by `RegionRouter` / `config=` assignment.
 
 ---
 
@@ -121,13 +159,16 @@ update_routing!(router::RegionRouter, regions::Vector{ActivityRegion}) -> nothin
 
 | Output (in-place on `router`) | Contract |
 |-------------------------------|----------|
-| `router.routing_weights` | length `n_regions`, **positive** entries, **sum ≈ 1** (`MIN_SCORE` clamps pre-/mid-normalization scores only; final entries may fall below `MIN_SCORE` after re-normalization) |
+| `router.routing_weights` | length `n_regions`, **non-negative** entries **≥ `router.config.min_score`** (positive when `min_score > 0`; zeros possible if `min_score = 0` and Float32 softmax underflows), **sum ≈ 1** (floor-preserving renorm; `min_score ≤ 1/n_regions` in Float32) |
 | `router.surprise`, `router.spike_density`, … | updated diagnostics; readable after the call |
 | return value | `nothing` (consume `routing_weights`, not a return vector) |
 
 **Legacy alias:** `update_relevance! === update_routing!`.
 
-This freeze does **not** change routing math (α/β/γ, EMA decay, inhibition, softmax).
+**Routing math notes (this freeze is not bit-identical to older heads):**
+- `prev_routing_weights` snapshots pre-update weights so default nonzero `gamma` affects ticks after the first
+- post-softmax min-score uses floor-preserving renorm (not clamp-then-`sum+ε` alone)
+- `epsilon` remains the shared stability floor for surprise and the first softmax divide
 
 ---
 
@@ -154,14 +195,14 @@ The following are **not** package types and are **not** part of this freeze:
 - Spike trains / event lists (`Vector` of times or `(neuron, t)` pairs)
 - Full membrane or synapse tensors
 - Shared “modulator” blobs beyond `ActivityRegion.output`
-- Config objects for α/β/γ scoring weights (still module-level constants)
 
+Scoring knobs **are** configurable via `RoutingConfig` / `RegionRouter(; config=...)`.
 Inhibition **is** configurable via `RegionRouter(; inhibition_matrix=...)` (see
 `RegionRouter` fields above). Default still seeds from the historical 4×4
 `INHIBIT` table when `n_regions ≤ 4`.
 
-If a workflow needs spike trains or scoring-config objects, they belong in the
-surrounding SNN/runtime package; only the compact summaries cross into TemporalFocus.
+If a workflow needs spike trains, they belong in the surrounding SNN/runtime
+package; only the per-tick compact activity summaries cross into TemporalFocus.
 
 ---
 

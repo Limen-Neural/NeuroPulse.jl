@@ -24,6 +24,187 @@ using TemporalFocus
         @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-5)
         @test router.tick_count == 0
         @test router.region_names == ["Region1", "Region2", "Region3", "Region4"]
+        @test router.config isa RoutingConfig
+        @test router.config.alpha == TemporalFocus.ALPHA
+        @test router.config.beta == TemporalFocus.BETA
+        @test router.config.gamma == TemporalFocus.GAMMA
+        @test router.config.ema_decay == TemporalFocus.EMA_DECAY
+        @test router.config.min_score == TemporalFocus.MIN_SCORE
+        @test router.config.epsilon == TemporalFocus.EPSILON
+    end
+
+    @testset "RoutingConfig default matches module constants" begin
+        cfg = RoutingConfig()
+        @test cfg.alpha == TemporalFocus.ALPHA
+        @test cfg.beta == TemporalFocus.BETA
+        @test cfg.gamma == TemporalFocus.GAMMA
+        @test cfg.ema_decay == TemporalFocus.EMA_DECAY
+        @test cfg.min_score == TemporalFocus.MIN_SCORE
+        @test cfg.epsilon == TemporalFocus.EPSILON
+    end
+
+    @testset "RoutingConfig validation" begin
+        A, B, G, D, M, E = (
+            TemporalFocus.ALPHA,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            TemporalFocus.EMA_DECAY,
+            TemporalFocus.MIN_SCORE,
+            TemporalFocus.EPSILON,
+        )
+        @test_throws ArgumentError RoutingConfig(A, B, G, D, M, 0.0f0)          # epsilon
+        @test_throws ArgumentError RoutingConfig(-1.0f0, B, G, D, M, E)         # alpha
+        @test_throws ArgumentError RoutingConfig(A, -0.1f0, G, D, M, E)         # beta
+        @test_throws ArgumentError RoutingConfig(A, B, -0.1f0, D, M, E)         # gamma
+        @test_throws ArgumentError RoutingConfig(A, B, G, 1.5f0, M, E)          # ema_decay
+        @test_throws ArgumentError RoutingConfig(A, B, G, -0.1f0, M, E)         # ema_decay
+        @test_throws ArgumentError RoutingConfig(A, B, G, D, -0.01f0, E)        # min_score
+        @test_throws ArgumentError RoutingConfig(Inf32, B, G, D, M, E)          # non-finite
+        @test_throws ArgumentError RoutingConfig(A, B, G, D, NaN32, E)
+        @test_throws ArgumentError RegionRouter(
+            config = RoutingConfig(A, B, G, D, 0.4f0, E),
+        )  # min_score * 4 > 1
+        @test_throws ArgumentError RegionRouter(n_regions = 0)
+        # Direct config reassignment must re-check floor feasibility
+        r = RegionRouter()
+        bad = RoutingConfig(A, B, G, D, 0.4f0, E)
+        @test_throws ArgumentError (r.config = bad)
+        r.config = RoutingConfig(A, B, G, D, M, E)  # valid
+        @test r.config.min_score == M
+        @test_throws ArgumentError (r.config = "not-a-config")
+        # Float32 product can round to 1 while floor is still > 1/n
+        n41 = 41
+        too_high = nextfloat(1.0f0 / Float32(n41))
+        @test_throws ArgumentError RegionRouter(
+            n_regions = n41,
+            n_out = 4,
+            config = RoutingConfig(A, B, G, D, too_high, E),
+        )
+    end
+
+    @testset "update_routing! rejects non-finite derived scores" begin
+        # ema_decay=0 keeps EMA at 0; tiny epsilon + large readout can overflow surprise
+        cfg = RoutingConfig(
+            TemporalFocus.ALPHA,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            0.0f0,
+            TemporalFocus.MIN_SCORE,
+            floatmin(Float32),
+        )
+        router = RegionRouter(
+            n_regions = 2,
+            n_out = 4,
+            region_names = ["A", "B"],
+            config = cfg,
+            inhibition_matrix = zeros(Float32, 2, 2),
+        )
+        regions = [
+            ActivityRegion(1.0f0, fill(1.0f32, 4)),
+            ActivityRegion(0.0f0, zeros(Float32, 4)),
+        ]
+        @test_throws ArgumentError update_routing!(router, regions)
+    end
+
+    @testset "min_score saturating floor uses uniform renorm" begin
+        # When min_score * n_regions == 1 and softmax is already uniform,
+        # excess ≈ 0 and the uniform fallback branch runs (codecov).
+        # Zero inhibition + identical inputs → equal raw scores → uniform softmax.
+        cfg = RoutingConfig(
+            TemporalFocus.ALPHA,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            TemporalFocus.EMA_DECAY,
+            0.25f0,  # 0.25 * 4 == 1
+            TemporalFocus.EPSILON,
+        )
+        router = RegionRouter(config = cfg, inhibition_matrix = zeros(Float32, 4, 4))
+        regions = [ActivityRegion(1.0f0, ones(Float32, 16)) for _ = 1:4]
+        update_routing!(router, regions)
+        @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-5)
+        @test all(w -> isapprox(w, 0.25f0; atol = 1e-4), router.routing_weights)
+
+        # Single-region router: softmax is always 1, floor mass == 1 → same branch.
+        cfg1 = RoutingConfig(
+            TemporalFocus.ALPHA,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            TemporalFocus.EMA_DECAY,
+            1.0f0,
+            TemporalFocus.EPSILON,
+        )
+        r1 = RegionRouter(
+            n_regions = 1,
+            n_out = 4,
+            region_names = ["Only"],
+            config = cfg1,
+            inhibition_matrix = zeros(Float32, 1, 1),
+        )
+        update_routing!(r1, [ActivityRegion(0.7f0, ones(Float32, 4))])
+        @test isapprox(r1.routing_weights[1], 1.0f0, atol = 1e-5)
+    end
+
+    @testset "gamma momentum affects routing after first tick" begin
+        # With momentum snapshot fixed, gamma > 0 changes weights vs gamma = 0
+        # once routing_weights diverge from the uniform init.
+        base = (
+            TemporalFocus.ALPHA,
+            TemporalFocus.BETA,
+            TemporalFocus.EMA_DECAY,
+            TemporalFocus.MIN_SCORE,
+            TemporalFocus.EPSILON,
+        )
+        r0 = RegionRouter(
+            config = RoutingConfig(base[1], base[2], 0.0f0, base[3], base[4], base[5]),
+        )
+        r1 = RegionRouter(
+            config = RoutingConfig(base[1], base[2], 0.9f0, base[3], base[4], base[5]),
+        )
+        for _ = 1:8
+            regions = [
+                ActivityRegion(1.0f0, ones(Float32, 16)),
+                ActivityRegion(0.2f0, 0.2f0 .* ones(Float32, 16)),
+                ActivityRegion(0.0f0, zeros(Float32, 16)),
+                ActivityRegion(0.0f0, zeros(Float32, 16)),
+            ]
+            update_routing!(r0, regions)
+            update_routing!(r1, regions)
+        end
+        @test r0.routing_weights != r1.routing_weights
+        @test r0.prev_routing_weights != r0.routing_weights ||
+              r1.prev_routing_weights != r1.routing_weights
+    end
+
+    @testset "per-router alpha changes routing_weights (LIM-230 / GH#24)" begin
+        # Same inputs, different alpha → different routing after enough ticks
+        cfg_default = RoutingConfig()
+        cfg_high_alpha = RoutingConfig(
+            0.95f0,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            TemporalFocus.EMA_DECAY,
+            TemporalFocus.MIN_SCORE,
+            TemporalFocus.EPSILON,
+        )
+        router_a = RegionRouter(config = cfg_default)
+        router_b = RegionRouter(config = cfg_high_alpha)
+
+        for _ = 1:40
+            regions = [
+                ActivityRegion(1.0f0, ones(Float32, 16)),
+                ActivityRegion(0.0f0, zeros(Float32, 16)),
+                ActivityRegion(0.0f0, zeros(Float32, 16)),
+                ActivityRegion(0.0f0, zeros(Float32, 16)),
+            ]
+            update_routing!(router_a, regions)
+            update_routing!(router_b, regions)
+        end
+
+        @test router_a.routing_weights != router_b.routing_weights
+        # Higher alpha weights spike density more → region 1 should dominate more
+        @test router_b.routing_weights[1] > router_a.routing_weights[1]
+        @test isapprox(sum(router_a.routing_weights), 1.0f0, atol = 1e-4)
+        @test isapprox(sum(router_b.routing_weights), 1.0f0, atol = 1e-4)
     end
 
     @testset "update_routing! sums to 1.0" begin
@@ -269,7 +450,20 @@ using TemporalFocus
     # ── Checkpointing (LIM-234 / GH#28) ───────────────────────────────────────
 
     @testset "save_state / load_state! round-trip" begin
-        router = RegionRouter(n_regions = 3, n_out = 8, region_names = ["A", "B", "C"])
+        custom_cfg = RoutingConfig(
+            0.7f0,
+            TemporalFocus.BETA,
+            TemporalFocus.GAMMA,
+            TemporalFocus.EMA_DECAY,
+            TemporalFocus.MIN_SCORE,
+            TemporalFocus.EPSILON,
+        )
+        router = RegionRouter(
+            n_regions = 3,
+            n_out = 8,
+            region_names = ["A", "B", "C"],
+            config = custom_cfg,
+        )
         for _ = 1:5
             regions = [
                 ActivityRegion(0.9f0, ones(Float32, 8)),
@@ -286,6 +480,7 @@ using TemporalFocus
         @test snap.tick_count == 5
         @test snap.region_names == ["A", "B", "C"]
         @test snap.region_names !== router.region_names
+        @test snap.config == custom_cfg
         @test snap.routing_weights == router.routing_weights
         @test snap.readout_ema == router.readout_ema
         # Snapshot must own independent buffers (not views into the router)
@@ -306,14 +501,17 @@ using TemporalFocus
         expected_surprise = copy(router.surprise)
         expected_scratch = copy(router.scratch)
         expected_tick = router.tick_count
+        expected_cfg = router.config
 
-        # Mutate router away from snapshot
+        # Mutate router away from snapshot (including config)
+        router.config = RoutingConfig()
         for _ = 1:3
             regions = [ActivityRegion(rand(Float32), rand(Float32, 8)) for _ = 1:3]
             update_routing!(router, regions)
         end
         @test router.tick_count == 8
         @test router.routing_weights != expected_weights
+        @test router.config != expected_cfg
 
         # Restore
         load_state!(router, snap)
@@ -325,6 +523,7 @@ using TemporalFocus
         @test router.prev_relevance == expected_prev_rel
         @test router.surprise == expected_surprise
         @test router.scratch == expected_scratch
+        @test router.config == expected_cfg
 
         # load_state alias works
         mutate_snap = save_state(router)
@@ -333,10 +532,12 @@ using TemporalFocus
         load_state(router, mutate_snap)
         @test router.tick_count == expected_tick
         @test router.routing_weights == expected_weights
+        @test router.config == expected_cfg
 
         # Further ticks after restore remain consistent with a fresh twin
         twin = RegionRouter(n_regions = 3, n_out = 8, region_names = ["A", "B", "C"])
         load_state!(twin, snap)
+        @test twin.config == expected_cfg
         regions = [
             ActivityRegion(0.5f0, 0.5f0 .* ones(Float32, 8)),
             ActivityRegion(0.4f0, 0.3f0 .* ones(Float32, 8)),
@@ -531,6 +732,47 @@ using TemporalFocus
         end
         @test err_names isa ArgumentError
         @test occursin("region_names", sprint(showerror, err_names))
+
+        # Legacy snapshot without scratch: fill! zero path
+        no_scratch = (
+            n_regions = snap.n_regions,
+            n_out = snap.n_out,
+            region_names = snap.region_names,
+            adjacency_matrix = snap.adjacency_matrix,
+            inhibition_matrix = snap.inhibition_matrix,
+            config = snap.config,
+            routing_weights = snap.routing_weights,
+            readout_ema = snap.readout_ema,
+            spike_density = snap.spike_density,
+            prev_routing_weights = snap.prev_routing_weights,
+            prev_relevance = snap.prev_relevance,
+            surprise = snap.surprise,
+            tick_count = snap.tick_count,
+        )
+        fill!(router.scratch, 1.0f0)
+        load_state!(router, no_scratch)
+        @test all(iszero, router.scratch)
+
+        # adjacency_matrix mismatch
+        bad_adj = merge(snap, (; adjacency_matrix = ones(Float32, 3, 3)))
+        @test_throws ArgumentError load_state!(router, bad_adj)
+    end
+
+
+    @testset "update_routing! rejects output length mismatch" begin
+        router = RegionRouter(n_out = 8)
+        regions = [ActivityRegion(0.5f0, ones(Float32, 4)) for _ = 1:4]  # wrong width
+        @test_throws ArgumentError update_routing!(router, regions)
+    end
+
+    @testset "update_routing! accepts large finite readouts" begin
+        # Float32 sum-of-squares would overflow ~1e20; Float64 staging must accept.
+        router = RegionRouter(n_out = 4, inhibition_matrix = zeros(Float32, 4, 4))
+        big = fill(1.0f20, 4)
+        regions = [ActivityRegion(0.5f0, copy(big)) for _ = 1:4]
+        update_routing!(router, regions)
+        @test all(isfinite, router.routing_weights)
+        @test isapprox(sum(router.routing_weights), 1.0f0, atol = 1e-3)
     end
 
     # ── adapt_leak! (LIM-233 / GH#27) ──────────────────────────────────────────
