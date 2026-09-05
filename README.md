@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/logo.png" width="220" alt="TemporalFocus">
+  <img src="docs/logo.png" width="220" alt="NeuroPulse">
 </p>
 
-<h1 align="center">TemporalFocus.jl</h1>
+<h1 align="center">NeuroPulse.jl</h1>
 <p align="center">Spike-driven relevance routing for modular neural systems</p>
 
 <p align="center">
@@ -10,11 +10,11 @@
   <img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="MIT OR Apache-2.0">
 </p>
 
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://limen-neural.github.io/NeuroPulse.jl/dev)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://rmems.github.io/NeuroPulse.jl/dev)
 
 ---
 
-TemporalFocus.jl is a small Julia library for computing per-component relevance scores from
+NeuroPulse.jl is a small Julia library for computing per-component relevance scores from
 spike activity and readout change over time. The core abstraction is a routing loop that
 updates component weights from:
 
@@ -28,7 +28,7 @@ integration layer, or a hardware supervisor.
 
 ## Project status
 
-TemporalFocus is an extracted, early-stage library. It is useful today, but it still needs a
+NeuroPulse is an extracted, early-stage library. It is useful today, but it still needs a
 lot of work before it reaches the broader long-term shape rmems wants for it.
 
 What this means in practice:
@@ -38,9 +38,9 @@ What this means in practice:
 - documentation and boundaries are improving, but the package is not yet the final form
 - downstream integrations should treat this as an evolving library rather than a finished platform
 
-## What TemporalFocus owns
+## What NeuroPulse owns
 
-TemporalFocus owns spike-driven relevance routing logic:
+NeuroPulse owns spike-driven relevance routing logic:
 
 - `ActivityRegion` as a compact per-region summary (`Float32` rate in `[0,1]`, readout of length `n_out`)
 - `RegionRouter` as the mutable routing state (`routing_weights` length `n_regions`, sum ~1)
@@ -51,9 +51,9 @@ TemporalFocus owns spike-driven relevance routing logic:
 The frozen interop shapes (and what the package deliberately does **not** own — e.g. spike
 event lists / full trains) are documented in [`docs/interop.md`](docs/interop.md).
 
-## What TemporalFocus does not own
+## What NeuroPulse does not own
 
-TemporalFocus does not own:
+NeuroPulse does not own:
 
 - spike event lists or full spike trains
 - full neuron or reservoir simulation
@@ -64,19 +64,23 @@ TemporalFocus does not own:
 - model-specific ANN/LLM adapters
 
 If a workflow needs those pieces, they should live in surrounding libraries or applications
-that feed compact readouts into TemporalFocus.
+that feed compact readouts into NeuroPulse.
 
 ## Installation
 
 ```julia
 using Pkg
-Pkg.add("TemporalFocus")
+Pkg.add(url="https://github.com/rmems/NeuroPulse.jl")
 ```
+
+The public repository identity is **NeuroPulse.jl**. The loadable Julia module name in
+`Project.toml` is still `TemporalFocus` until a follow-up rename; use `using TemporalFocus`
+after the add.
 
 ## Quick start
 
 ```julia
-using TemporalFocus
+using TemporalFocus  # loadable module name until Project.toml is renamed
 
 router = RegionRouter(
     n_regions = 4,
@@ -104,7 +108,7 @@ Worked examples live in [`examples/`](examples/):
 
 - [`examples/three_region.jl`](examples/three_region.jl) — minimal 3-region layout
 - [`examples/six_region.jl`](examples/six_region.jl) — larger layout with custom region names
-- [`examples/reservoir_integration.jl`](examples/reservoir_integration.jl) — pattern for feeding compact reservoir readouts into TemporalFocus
+- [`examples/reservoir_integration.jl`](examples/reservoir_integration.jl) — pattern for feeding compact reservoir readouts into NeuroPulse
 
 Run any example from the repository root:
 
@@ -126,7 +130,7 @@ nero_diagnostics == routing_diagnostics
 
 ## Core routing rule
 
-At each tick, TemporalFocus computes a raw score for each component:
+At each tick, NeuroPulse computes a raw score for each component:
 
 ```
 score_i = α · density_i + β · surprise_i + γ · momentum_i
@@ -173,7 +177,7 @@ Those defaults are serviceable, but they are not the final abstraction boundary.
 
 ## Documentation
 
-- [Dev docs](https://limen-neural.github.io/NeuroPulse.jl/dev) — updates from `main` (Documenter `deploydocs`)
+- [Dev docs](https://rmems.github.io/NeuroPulse.jl/dev) — updates from `main` (Documenter `deploydocs`)
 - Stable docs (`/stable`) appear only after the first version tag is pushed; until then use **dev**
 
 Source markdown lives in `docs/` (Documenter pages under `docs/src/`):
@@ -192,21 +196,15 @@ julia --project=docs -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
 julia --project=docs docs/make.jl
 ```
 
-## Migration note
+## Historical note
 
-The **Julia package / project identity** changed from `NeuroPulse` (and earlier
-`SpikenautAttention` / `SpikenautNero`) to **`TemporalFocus`**. The **GitHub
-repository** and **GitHub Pages path** remain `Limen-Neural/NeuroPulse.jl`
-(`https://limen-neural.github.io/NeuroPulse.jl/...`).
+This repository is **NeuroPulse.jl** (`rmems/NeuroPulse.jl`). The Julia `Project.toml`
+`name` and loadable module may still say `TemporalFocus` temporarily; that is a package-metadata
+lag, not the public identity. A sibling `TemporalFocus` line is consolidating **into**
+NeuroPulse — do not treat TemporalFocus as this repository's public name.
 
-Migration steps for downstream users:
-
-- replace `Pkg.add("NeuroPulse")` (or `SpikenautAttention`) with `Pkg.add("TemporalFocus")`
-- replace `using NeuroPulse` (or `using SpikenautAttention`) with `using TemporalFocus`
-- update any package metadata or examples that still reference the old package name
-
-The NERO algorithm name remains in the current public API via `NeroOrchestrator` and
-`nero_diagnostics`, but the package identity is now `TemporalFocus`.
+Earlier names (`SpikenautAttention` / `SpikenautNero`) are historical only. NERO remains in
+the current public API via `NeroOrchestrator` and `nero_diagnostics`.
 
 ## Development
 
