@@ -9,10 +9,7 @@ using Random
 
 @testset "Attention" begin
     @testset "Discrete Attention" begin
-        q = SpikeTrain([
-            SpikeEvent(1, 0.10f0, 1.0f0),
-            SpikeEvent(2, 0.20f0, 1.0f0),
-        ])
+        q = SpikeTrain([SpikeEvent(1, 0.10f0, 1.0f0), SpikeEvent(2, 0.20f0, 1.0f0)])
         k = SpikeTrain([
             SpikeEvent(1, 0.15f0, 1.0f0),
             SpikeEvent(1, 0.25f0, 1.0f0),
@@ -45,10 +42,10 @@ using Random
 
     @testset "Continuous Attention" begin
         buffer_q = TemporalBuffer(0.30f0, [SpikeEvent(1, 0.50f0, 1.0f0)])
-        buffer_k = TemporalBuffer(0.30f0, [
-            SpikeEvent(1, 0.35f0, 1.0f0),
-            SpikeEvent(1, 0.90f0, 1.0f0),
-        ])
+        buffer_k = TemporalBuffer(
+            0.30f0,
+            [SpikeEvent(1, 0.35f0, 1.0f0), SpikeEvent(1, 0.90f0, 1.0f0)],
+        )
         v = Float32[
             1 2
             3 4
@@ -64,16 +61,19 @@ using Random
         maxn = Float32[2, 6, 3]
 
         @test normalize_l1!(l1) == Float32[0.25, 0.25, 0.5]
-        @test normalize_max!(maxn) == Float32[1 / 3, 1, 0.5]
+        @test normalize_max!(maxn) == Float32[1/3, 1, 0.5]
     end
 
     @testset "Buffer Pruning" begin
         @testset "Basic pruning" begin
-            buffer = TemporalBuffer(0.25f0, [
-                SpikeEvent(1, 0.10f0, 1.0f0),
-                SpikeEvent(2, 0.55f0, 1.0f0),
-                SpikeEvent(3, 0.80f0, 1.0f0),
-            ])
+            buffer = TemporalBuffer(
+                0.25f0,
+                [
+                    SpikeEvent(1, 0.10f0, 1.0f0),
+                    SpikeEvent(2, 0.55f0, 1.0f0),
+                    SpikeEvent(3, 0.80f0, 1.0f0),
+                ],
+            )
 
             prune!(buffer, 0.80f0)
 
@@ -88,10 +88,10 @@ using Random
         end
 
         @testset "Prune removes all events" begin
-            buffer = TemporalBuffer(0.10f0, [
-                SpikeEvent(1, 0.10f0, 1.0f0),
-                SpikeEvent(2, 0.20f0, 1.0f0),
-            ])
+            buffer = TemporalBuffer(
+                0.10f0,
+                [SpikeEvent(1, 0.10f0, 1.0f0), SpikeEvent(2, 0.20f0, 1.0f0)],
+            )
             prune!(buffer, 10.0f0)
             @test isempty(buffer.events)
         end
@@ -171,7 +171,10 @@ using Random
         end
 
         @testset "Dimension mismatch throws" begin
-            @test_throws DimensionMismatch TemporalFocus.Attention._apply_readout(Float32[1, 2], Float32[1 0 0; 0 1 0; 0 0 1])
+            @test_throws DimensionMismatch TemporalFocus.Attention._apply_readout(
+                Float32[1, 2],
+                Float32[1 0 0; 0 1 0; 0 0 1],
+            )
         end
 
         @testset "No coincidences" begin
@@ -341,11 +344,14 @@ using Random
 
         @testset "Monotonic decay" begin
             τ = 1.0f0
-            @test temporal_weight(0.1f0, τ) > temporal_weight(0.5f0, τ) > temporal_weight(1.0f0, τ)
+            @test temporal_weight(0.1f0, τ) >
+                  temporal_weight(0.5f0, τ) >
+                  temporal_weight(1.0f0, τ)
         end
 
         @testset "Unchecked matches public when τ > 0" begin
-            @test TemporalFocus.Attention._temporal_weight_unchecked(0.3f0, 0.5f0) ≈ temporal_weight(0.3f0, 0.5f0)
+            @test TemporalFocus.Attention._temporal_weight_unchecked(0.3f0, 0.5f0) ≈
+                  temporal_weight(0.3f0, 0.5f0)
         end
 
         @testset "Public still validates τ" begin
@@ -370,10 +376,14 @@ using Random
         @test occursin("value=", s)
         @test sprint(show, SpikeTrain()) == "SpikeTrain(0 events)"
         @test sprint(show, SpikeTrain([SpikeEvent(1, 0.1f0)])) == "SpikeTrain(1 event)"
-        @test sprint(show, SpikeTrain([SpikeEvent(1, 0.1f0), SpikeEvent(2, 0.2f0)])) == "SpikeTrain(2 events)"
+        @test sprint(show, SpikeTrain([SpikeEvent(1, 0.1f0), SpikeEvent(2, 0.2f0)])) ==
+              "SpikeTrain(2 events)"
         @test occursin("TemporalBuffer(window=", sprint(show, TemporalBuffer(0.25f0)))
         @test occursin("0 events)", sprint(show, TemporalBuffer(0.25f0)))
-        @test occursin("1 event)", sprint(show, TemporalBuffer(0.25f0, [SpikeEvent(1, 0.1f0)])))
+        @test occursin(
+            "1 event)",
+            sprint(show, TemporalBuffer(0.25f0, [SpikeEvent(1, 0.1f0)])),
+        )
     end
 
 
@@ -438,7 +448,10 @@ using Random
             @test isequal(bnan1, bnan2)
             @test length(Set([bnan1, bnan2])) == 1
             # Mutable-key contract: prune! changes content hash (same caveat as SpikeTrain)
-            buf = TemporalBuffer(0.5f0, [SpikeEvent(1, 0.0f0, 1.0f0), SpikeEvent(1, 1.0f0, 1.0f0)])
+            buf = TemporalBuffer(
+                0.5f0,
+                [SpikeEvent(1, 0.0f0, 1.0f0), SpikeEvent(1, 1.0f0, 1.0f0)],
+            )
             h_before = hash(buf)
             prune!(buf, 1.0f0)
             @test hash(buf) != h_before
@@ -451,7 +464,7 @@ using Random
         atol = 1.0f-5
 
         @testset "normalize_l1! properties" begin
-            for _ in 1:N
+            for _ = 1:N
                 n = rand(rng, 1:16)
                 # Mix of positive, negative, and zero entries
                 w = Float32.(randn(rng, n) .* 3)
@@ -470,7 +483,9 @@ using Random
                     else
                         @test sum(w) ≈ 1.0f0 atol = atol
                         # Proportionality preserved for non-zero total
-                        @test all(isapprox.(w .* total, original; atol = atol, rtol = 1.0f-4))
+                        @test all(
+                            isapprox.(w .* total, original; atol = atol, rtol = 1.0f-4),
+                        )
                     end
                 else
                     @test w == original
@@ -479,7 +494,7 @@ using Random
         end
 
         @testset "normalize_max! properties" begin
-            for _ in 1:N
+            for _ = 1:N
                 n = rand(rng, 1:16)
                 w = Float32.(randn(rng, n) .* 3)
                 # Independent branches: ~15% zeros, ~15% all non-positive (disjoint).
@@ -503,7 +518,7 @@ using Random
         end
 
         @testset "temporal_weight properties" begin
-            for _ in 1:N
+            for _ = 1:N
                 τ = Float32(rand(rng) * 4 + 1.0f-3)  # positive
                 dt = Float32(randn(rng) * 5)
 
@@ -519,7 +534,7 @@ using Random
             end
 
             # τ <= 0 throws
-            for _ in 1:N
+            for _ = 1:N
                 dt = Float32(randn(rng))
                 bad_τ = rand(rng) < 0.5 ? 0.0f0 : -Float32(rand(rng) * 5 + eps(Float32))
                 @test_throws ArgumentError temporal_weight(dt, bad_τ)
@@ -527,7 +542,7 @@ using Random
         end
 
         @testset "prune! properties" begin
-            for _ in 1:N
+            for _ = 1:N
                 window = Float32(rand(rng) * 2 + 0.05f0)
                 current_time = Float32(rand(rng) * 10)
                 n_events = rand(rng, 0:24)
@@ -536,8 +551,7 @@ using Random
                         rand(rng, 1:8),
                         Float32(current_time + (rand(rng) * 4 - 2) * window),
                         Float32(rand(rng) * 2 - 0.5),
-                    )
-                    for _ in 1:n_events
+                    ) for _ = 1:n_events
                 ]
                 buffer = TemporalBuffer(window, events)
                 before_len = length(buffer.events)
@@ -584,4 +598,3 @@ using Random
     end
 
 end
-

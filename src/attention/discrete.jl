@@ -7,8 +7,9 @@
 end
 
 @inline function _check_neuron_id(neuron_id::Int, upper::Int, label::AbstractString)
-    1 <= neuron_id <= upper ||
-        throw(ArgumentError("$(label) neuron_id $(neuron_id) is outside valid range 1:$(upper)"))
+    1 <= neuron_id <= upper || throw(
+        ArgumentError("$(label) neuron_id $(neuron_id) is outside valid range 1:$(upper)"),
+    )
     return neuron_id
 end
 

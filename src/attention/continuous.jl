@@ -31,7 +31,7 @@ function spike_attention_continuous(
     τ::Real = 1.0f0,
 )
     τ_f32 = Float32(τ)
-    τ_f32 > 0f0 || throw(ArgumentError("τ must be positive"))
+    τ_f32 > 0.0f0 || throw(ArgumentError("τ must be positive"))
     n = _check_positive_rows(readout)
     attention = zeros(Float32, n)
     window = min(source_buffer.window, context_buffer.window)
@@ -42,8 +42,10 @@ function spike_attention_continuous(
             if source_id == context_event.neuron_id
                 dt = source_event.t - context_event.t
                 if abs(dt) <= window
-                    attention[source_id] += source_event.value * context_event.value *
-                                            _temporal_weight_unchecked(dt, τ_f32)
+                    attention[source_id] +=
+                        source_event.value *
+                        context_event.value *
+                        _temporal_weight_unchecked(dt, τ_f32)
                 end
             end
         end

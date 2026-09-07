@@ -115,7 +115,14 @@ end
 
 function Base.show(io::IO, buffer::TemporalBuffer)
     n = length(buffer.events)
-    print(io, "TemporalBuffer(window=", buffer.window, ", ", n, n == 1 ? " event)" : " events)")
+    print(
+        io,
+        "TemporalBuffer(window=",
+        buffer.window,
+        ", ",
+        n,
+        n == 1 ? " event)" : " events)",
+    )
 end
 
 # `==` uses Float32 `==` (±0.0 equal, NaNs not equal).
@@ -128,8 +135,7 @@ Base.:(==)(a::SpikeEvent, b::SpikeEvent) =
 Base.isequal(a::SpikeEvent, b::SpikeEvent) =
     a.neuron_id == b.neuron_id && isequal(a.t, b.t) && isequal(a.value, b.value)
 
-Base.hash(a::SpikeEvent, h::UInt) =
-    hash(a.value, hash(a.t, hash(a.neuron_id, h)))
+Base.hash(a::SpikeEvent, h::UInt) = hash(a.value, hash(a.t, hash(a.neuron_id, h)))
 
 Base.:(==)(a::SpikeTrain, b::SpikeTrain) = a.events == b.events
 
@@ -143,5 +149,4 @@ Base.:(==)(a::TemporalBuffer, b::TemporalBuffer) =
 Base.isequal(a::TemporalBuffer, b::TemporalBuffer) =
     isequal(a.window, b.window) && isequal(a.events, b.events)
 
-Base.hash(a::TemporalBuffer, h::UInt) =
-    hash(a.events, hash(a.window, h))
+Base.hash(a::TemporalBuffer, h::UInt) = hash(a.events, hash(a.window, h))
