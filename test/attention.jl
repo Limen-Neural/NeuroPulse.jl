@@ -113,6 +113,8 @@ using Random
     @testset "SpikeTrain constructor" begin
         @test isempty(SpikeTrain().events)
         @test SpikeTrain([SpikeEvent(1, 0.5f0)]).events[1].neuron_id == 1
+        stored = SpikeEvent[SpikeEvent(1, 0.5f0)]
+        @test SpikeTrain(view(stored, :)).events == stored
     end
 
     @testset "TemporalBuffer constructor" begin
@@ -175,6 +177,12 @@ using Random
                 Float32[1, 2],
                 Float32[1 0 0; 0 1 0; 0 0 1],
             )
+        end
+
+        @testset "Empty readout throws" begin
+            q = SpikeTrain([SpikeEvent(1, 0.1f0, 1.0f0)])
+            k = SpikeTrain([SpikeEvent(1, 0.2f0, 1.0f0)])
+            @test_throws ArgumentError spike_attention_discrete(q, k, zeros(Float32, 0, 1))
         end
 
         @testset "No coincidences" begin

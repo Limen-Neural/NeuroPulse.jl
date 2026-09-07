@@ -21,8 +21,9 @@ struct SpikeEvent
     value::Float32
 end
 
-SpikeEvent(neuron_id::Integer, t::Real, value::Real = 1.0f0) =
-    SpikeEvent(Int(neuron_id), Float32(t), Float32(value))
+function SpikeEvent(neuron_id::Integer, t::Real, value::Real = 1.0f0)
+    return SpikeEvent(Int(neuron_id), Float32(t), Float32(value))
+end
 
 """
     SpikeTrain(events=SpikeEvent[])
@@ -77,8 +78,9 @@ struct TemporalBuffer
     events::Vector{SpikeEvent}
 end
 
-TemporalBuffer(window::Real, events::AbstractVector{<:SpikeEvent} = SpikeEvent[]) =
-    TemporalBuffer(Float32(window), collect(events))
+function TemporalBuffer(window::Real, events::AbstractVector{<:SpikeEvent} = SpikeEvent[])
+    return TemporalBuffer(Float32(window), collect(events))
+end
 
 Base.isempty(train::SpikeTrain) = isempty(train.events)
 Base.isempty(buffer::TemporalBuffer) = isempty(buffer.events)
