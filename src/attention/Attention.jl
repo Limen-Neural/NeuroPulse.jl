@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """
-    TemporalFocus
+    TemporalFocus.Attention
 
-Pure spike-native temporal attention kernel for the Spikenaut ecosystem.
+Coincidence-based and temporally decayed spike attention, imported from
+[`rmems/TemporalFocus.jl`](https://github.com/rmems/TemporalFocus.jl) at
+`eb38c70aad9f077e0775312a09e4dabe7b4bc016` (ADR 0002).
 
-This module provides coincidence-based and temporally decayed spike interaction,
-recency-weighted temporal attention, attention normalization, and readout
-application over spike-derived weights.
+Public names are re-exported from the parent `TemporalFocus` module. The loadable
+package name remains `TemporalFocus` (UUID `b7e4c3f2-…`); this submodule does not
+introduce a second resolvable package.
 
 # Exports
 - [`SpikeEvent`](@ref), [`SpikeTrain`](@ref), [`TemporalBuffer`](@ref) — spike data types
@@ -19,7 +21,9 @@ application over spike-derived weights.
 
 All spike values and temporal quantities use `Float32`.
 """
-module TemporalFocus
+module Attention
+
+using LinearAlgebra
 
 export SpikeEvent, SpikeTrain, TemporalBuffer
 export prune!
