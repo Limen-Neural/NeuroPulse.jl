@@ -25,9 +25,8 @@ The retired TemporalFocus.jl UUID `7f3c9f2a-…` must not be added to any
 environment that already depends on NeuroPulse. The source repository stays
 online as provenance (README redirect; no archive in this workstream).
 
-Proof in CI: `test/package_identity.jl` asserts the loaded `Base.PkgId` and that
-`Pkg.dependencies()` contains exactly one `TemporalFocus` entry, equal to the
-survivor UUID.
+Proof in CI: `test/package_identity.jl` asserts `Base.PkgId(TemporalFocus)` and
+`Base.identify_package("TemporalFocus")` both resolve to the survivor UUID.
 
 Source SHA imported: `eb38c70aad9f077e0775312a09e4dabe7b4bc016`.
 
